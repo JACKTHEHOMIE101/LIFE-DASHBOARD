@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { AlertTriangle, Loader2, Pencil, Plus, Target } from "lucide-react";
 import type { GoalSummary } from "@/lib/domain/goals";
-import { GOAL_STATUS_LABEL } from "@/lib/domain/goals";
+import { GOAL_STATUS_LABEL } from "@/lib/domain/labels";
 import type { PaletteArea } from "@/lib/domain/search-types";
 import { createGoal, updateGoal, type GoalState } from "@/lib/actions/goals";
 import { Meter } from "@/components/ui/charts";

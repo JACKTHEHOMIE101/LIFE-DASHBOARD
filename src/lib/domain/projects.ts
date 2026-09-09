@@ -8,16 +8,10 @@ import {
 } from "@/db/schema";
 import { daysBetween } from "@/lib/utils";
 
+export { PROJECT_STATUS_LABEL } from "./labels";
+
 /** A project with no activity for this long is treated as stalled. */
 export const STALL_THRESHOLD_DAYS = 14;
-
-export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
-  planning: "Planning",
-  active: "Active",
-  on_hold: "On hold",
-  completed: "Completed",
-  archived: "Archived",
-};
 
 export type ProjectSummary = Project & {
   areaName: string | null;

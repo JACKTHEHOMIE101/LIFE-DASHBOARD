@@ -5,15 +5,10 @@ import { db } from "@/db";
 import { goals, lifeAreas, projects, type Goal, type GoalStatus } from "@/db/schema";
 import { clamp, daysBetween } from "@/lib/utils";
 
+export { GOAL_STATUS_LABEL } from "./labels";
+
 /** A goal with no recorded progress for this long is surfaced as neglected. */
 export const NEGLECT_THRESHOLD_DAYS = 21;
-
-export const GOAL_STATUS_LABEL: Record<GoalStatus, string> = {
-  active: "Active",
-  paused: "Paused",
-  achieved: "Achieved",
-  abandoned: "Abandoned",
-};
 
 /**
  * Progress toward a goal, as a fraction from 0 to 1, or null when there is

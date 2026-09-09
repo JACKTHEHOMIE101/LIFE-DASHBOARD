@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, Flag, Pencil, Plus } from "lucide-react";
 import type { Milestone, Project, Task } from "@/db/schema";
 import type { PaletteArea, PaletteProject } from "@/lib/domain/search-types";
-import { PROJECT_STATUS_LABEL } from "@/lib/domain/projects";
+import { PROJECT_STATUS_LABEL } from "@/lib/domain/labels";
 import { toggleMilestone, addMilestone } from "@/lib/actions/projects";
 import { ProjectForm } from "./project-form";
 import { TaskForm } from "@/components/tasks/task-form";

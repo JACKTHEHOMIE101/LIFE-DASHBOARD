@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { ThemeProvider } from "@/components/shell/theme";
 import { TopBar } from "@/components/shell/topbar";
 import { GlobalOverlays } from "@/components/shell/global-overlays";
+import { ServiceWorkerRegistration } from "@/components/shell/service-worker";
 import { getPaletteData } from "@/lib/domain/search";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           <MobileTabs />
           <GlobalOverlays projects={paletteData.projects} lifeAreas={paletteData.lifeAreas} />
+          <ServiceWorkerRegistration />
         </div>
       </CommandPaletteProvider>
     </ThemeProvider>
