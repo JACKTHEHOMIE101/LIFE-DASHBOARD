@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Check, Loader2, NotebookPen, Search } from "lucide-react";
@@ -80,19 +80,23 @@ export function JournalView({
   query: string;
 }) {
   const router = useRouter();
-  const [state, formAction] = useActionState<JournalState, FormData>(saveJournalEntry, {});
   const [search, setSearch] = useState(query);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    if (state?.ok) {
-      setSaved(true);
-      router.refresh();
-      const id = setTimeout(() => setSaved(false), 2500);
-      return () => clearTimeout(id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  // The saved confirmation is raised by the action itself rather than by an
+  // effect watching its result.
+  const [state, formAction] = useActionState<JournalState, FormData>(
+    async (prev, formData) => {
+      const result = await saveJournalEntry(prev, formData);
+      if (result?.ok) {
+        setSaved(true);
+        router.refresh();
+        setTimeout(() => setSaved(false), 2500);
+      }
+      return result;
+    },
+    {},
+  );
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">

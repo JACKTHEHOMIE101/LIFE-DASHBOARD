@@ -14,7 +14,6 @@ const url = process.env.DATABASE_URL ?? "file:./data/life-os.db";
 const authToken = process.env.DATABASE_AUTH_TOKEN;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __lifeOsClient: Client | undefined;
 }
 

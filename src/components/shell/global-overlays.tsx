@@ -15,15 +15,16 @@ export function GlobalOverlays({
 }) {
   const { paletteOpen, closePalette, captureOpen, closeCapture, openCapture } = useCommandPalette();
 
+  // Mounted only while open, so each one starts from clean state instead of
+  // resetting itself in an effect every time it reopens.
   return (
     <>
-      <CommandPalette open={paletteOpen} onClose={closePalette} onOpenCapture={openCapture} />
-      <QuickCapture
-        open={captureOpen}
-        onClose={closeCapture}
-        projects={projects}
-        lifeAreas={lifeAreas}
-      />
+      {paletteOpen ? (
+        <CommandPalette onClose={closePalette} onOpenCapture={openCapture} />
+      ) : null}
+      {captureOpen ? (
+        <QuickCapture onClose={closeCapture} projects={projects} lifeAreas={lifeAreas} />
+      ) : null}
     </>
   );
 }

@@ -262,6 +262,9 @@ export function SettingsView({
                   startTransition(async () => {
                     const result = await deleteAccount(confirmation);
                     if (result.error) setDeleteError(result.error);
+                    // A hard navigation on purpose: the account is gone, so every
+                    // cached RSC payload and client cache must be discarded too.
+                    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
                     else window.location.href = "/login";
                   })
                 }

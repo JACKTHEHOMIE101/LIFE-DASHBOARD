@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, count, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { habitEntries, journalEntries, projects, tasks } from "@/db/schema";
+import { habitEntries, journalEntries, tasks } from "@/db/schema";
 import { addDays, formatDuration, formatMoney, isoDate, mean, pct, startOfWeek } from "@/lib/utils";
 import { analyseEvents, getEventsBetween } from "./calendar";
 import { getCashflowForRange, getSpendingAnomalies } from "./finances";

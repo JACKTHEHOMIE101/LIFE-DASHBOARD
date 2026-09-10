@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Archive, ArrowDown, ArrowUp, Check, Loader2, Pencil, Plus, RotateCcw } from "lucide-react";
@@ -166,15 +166,19 @@ function AreaCard({ area, canMoveUp, canMoveDown }: { area: AreaRow; canMoveUp: 
 export function LifeAreasView({ areas }: { areas: AreaRow[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction] = useActionState<AreaState, FormData>(createLifeArea, {});
-
-  useEffect(() => {
-    if (state?.ok) {
-      router.refresh();
-      setOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  // Closing on success happens inside the action rather than in an effect
+  // watching its result, so the side effect sits at its cause.
+  const [state, formAction] = useActionState<AreaState, FormData>(
+    async (prev, formData) => {
+      const result = await createLifeArea(prev, formData);
+      if (result?.ok) {
+        router.refresh();
+        setOpen(false);
+      }
+      return result;
+    },
+    {},
+  );
 
   const active = areas.filter((a) => !a.archivedAt);
   const archived = areas.filter((a) => a.archivedAt);

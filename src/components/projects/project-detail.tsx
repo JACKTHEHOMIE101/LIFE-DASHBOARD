@@ -15,7 +15,7 @@ import { Meter } from "@/components/ui/charts";
 import {
   AreaDot, Badge, Button, Card, CardHeader, DemoBadge, DetailRow, EmptyState, Input,
 } from "@/components/ui/primitives";
-import { cn, formatDate, relativeDay } from "@/lib/utils";
+import { cn, formatDate, pluralise, relativeDay } from "@/lib/utils";
 
 type DetailProject = Project & {
   areaName: string | null;
@@ -270,7 +270,7 @@ export function ProjectDetail({
                   ? "Never"
                   : project.daysInactive === 0
                     ? "Today"
-                    : `${project.daysInactive} days ago`}
+                    : `${pluralise(project.daysInactive, "day")} ago`}
               </DetailRow>
               <DetailRow label="Source">
                 {project.provider ? `Imported from ${project.provider}` : "Created here"}

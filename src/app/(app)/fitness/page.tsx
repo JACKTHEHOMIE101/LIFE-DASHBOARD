@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { Dumbbell } from "lucide-react";
 import { db } from "@/db";
 import { exerciseSets, exercises } from "@/db/schema";

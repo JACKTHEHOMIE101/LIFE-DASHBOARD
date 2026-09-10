@@ -3,7 +3,7 @@ import "server-only";
 import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { events, interactions, lifeAreas, notes, tasks } from "@/db/schema";
-import { addDays, formatDuration, mean, pct, startOfDay } from "@/lib/utils";
+import { addDays, formatDuration, mean, pct } from "@/lib/utils";
 import { getSpendingAnomalies, getTrailingCashflow } from "./finances";
 import { getMetricTrend, getWorkoutStats } from "./health";
 import { listGoals } from "./goals";

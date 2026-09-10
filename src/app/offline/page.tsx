@@ -18,6 +18,10 @@ export default function OfflinePage() {
           Pages you have already opened are still available. Anything you capture while offline is
           queued and sent when the connection comes back.
         </p>
+        {/* A plain anchor on purpose: this page is served from the service
+            worker cache with no router attached, and "try again" should force
+            a real network request rather than a client-side transition. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/"
           className="mt-6 inline-flex h-9 items-center rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink"

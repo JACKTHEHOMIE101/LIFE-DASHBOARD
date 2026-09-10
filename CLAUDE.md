@@ -1,0 +1,98 @@
+# Life OS — working notes
+
+A personal Life OS. Read `README.md` first for what exists and how to run it.
+This file is about how to work in the codebase without breaking its principles.
+
+## Commands
+
+```bash
+npm run dev            # dev server
+npm test               # vitest, 54 tests
+npm run build          # production build — the real client/server boundary check
+npm run db:generate    # after any schema change
+npm run db:migrate
+npm run db:seed        # reseed demo data (safe to re-run)
+```
+
+## The two rules that matter
+
+**1. Never invent precision.** If a number cannot be computed honestly, return
+`null` and let the UI say "no data" or "not connected yet". Do not default to
+zero, estimate, or illustrate. `computeGoalProgress` returning `null` rather
+than `0` is the pattern to copy.
+
+**2. Every surfaced signal explains itself.** Anything that appears in
+Attention, Life Pulse or a notification carries the reason it fired. If you add
+a detector, add its threshold to the methodology text next to it.
+
+Corollary: thresholds live in named constants (`STALL_THRESHOLD_DAYS`,
+`NEGLECT_THRESHOLD_DAYS`) and are documented where the user can read them.
+
+## Layout
+
+```
+src/db/           schema, migrations, seed. columns.ts holds shared column helpers
+src/lib/domain/   derived rules. Pure where possible, always server-only
+src/lib/actions/  every write. "use server". Re-check ownership, never trust ids
+src/lib/ai/       Chief of Staff: tools, agent loop, deterministic fallback
+src/lib/notifications/  engine (schedule/deliver) + generators (rules)
+src/lib/integrations/   adapter contract and provider registry
+src/components/   ui/ primitives, then one folder per feature area
+```
+
+## Client/server boundary — the trap to avoid
+
+Domain modules import `server-only`. A **client component may only
+`import type`** from them. Importing a *value* (a label map, a helper) compiles
+fine under `tsc` and then fails at build with "server-only cannot be imported
+from a Client Component".
+
+Shared values live in modules with no database import:
+
+- `src/lib/domain/labels.ts` — status and metric label maps
+- `src/lib/domain/search-types.ts` — search and palette shapes
+
+`npm run build` is the only reliable check for this. `tsc --noEmit` will not
+catch it.
+
+## Adding things
+
+**A new derived signal**: put the rule in `src/lib/domain/`, expose it to the
+AI as a tool in `src/lib/ai/tools.ts`, and add its threshold to the methodology
+strings so the UI can explain it.
+
+**A new integration**: implement `ProviderAdapter` from
+`src/lib/integrations/types.ts`, add a `ProviderDefinition` to `registry.ts`,
+and upsert on `(provider, externalId)`. Touch nothing else — no schema change,
+no UI change. Credentials go to a server-side store; only `credentialRef` is
+persisted.
+
+**A new notification**: add a rule to `src/lib/notifications/generators.ts` with
+a `dedupeKey` derived from the source row and the lead time. Generation must
+stay idempotent — it runs on every page view.
+
+**A schema change**: edit `schema.ts`, run `db:generate` then `db:migrate`.
+Prefer soft deletion. Anything importable needs the `provenance` spread;
+anything user-facing needs `ownership`.
+
+## Things that will bite you
+
+- **Grid overflow on mobile.** Grid items default to `min-width: auto`. Every
+  responsive grid needs an explicit `grid-cols-[minmax(0,1fr)]` base track or
+  it will force the layout wider than a phone viewport.
+- **Trailing windows, not calendar months.** Month-to-date reports "no income"
+  for anyone paid at the end of the month. Use `getCashflowForRange`.
+- **Anomaly detection needs a noise floor.** A percentage over a mean flags
+  half your categories. Require exceeding the prior *peak* too.
+- **Turbopack dev caching goes stale** after edits that move module-level
+  constants. If dev shows an error the build does not, `rm -rf .next`.
+- **`Suspense` with `fallback={null}`** around a client component on a
+  `force-dynamic` page can render a blank screen if the boundary never flushes.
+
+## AI conventions
+
+The Chief of Staff reads through tools scoped to one `userId`, bound at call
+time and never present in any tool schema. Write tools return **proposals**;
+`confirmProposal` is the only path to a write, and it stamps `origin: "ai"` and
+an audit row. Reviews compute every number in `buildReviewStats` — the model
+only rewrites prose and is told it may not change a figure.

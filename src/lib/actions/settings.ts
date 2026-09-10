@@ -131,6 +131,7 @@ export async function exportUserData(): Promise<string> {
     .select()
     .from(schema.integrations)
     .where(eq(schema.integrations.userId, user.id));
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured out so the secret pointer never reaches an export
   data.integrations = integrationRows.map(({ credentialRef, ...rest }) => rest);
 
   await audit(user.id, "data.export", { actor: "user" });

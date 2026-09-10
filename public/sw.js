@@ -1,5 +1,3 @@
-/* eslint-disable no-undef */
-
 /**
  * Life OS service worker.
  *

@@ -12,7 +12,7 @@ import { Overlay } from "@/components/ui/overlay";
 import {
   Badge, Button, Card, CardHeader, DemoBadge, EmptyState, Input, Label, Select, Textarea,
 } from "@/components/ui/primitives";
-import { cn, formatDate, isoDate, pluralise } from "@/lib/utils";
+import { cn, isoDate, pluralise } from "@/lib/utils";
 
 const IMPORTANCE_LABEL: Record<number, string> = {
   1: "Inner circle",

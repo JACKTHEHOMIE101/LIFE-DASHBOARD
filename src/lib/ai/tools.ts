@@ -12,11 +12,9 @@ import { getHealthOverview, getWorkoutStats } from "@/lib/domain/health";
 import { listProjects } from "@/lib/domain/projects";
 import { getRelationshipsNeedingAttention, getUpcomingDates } from "@/lib/domain/relationships";
 import { globalSearch } from "@/lib/domain/search";
-import { getCompletionSeries, getTaskCounts, listTasks } from "@/lib/domain/tasks";
+import { getTaskCounts, listTasks } from "@/lib/domain/tasks";
 import { getTimeAnalytics } from "@/lib/domain/analytics";
-import {
-  addDays, formatDuration, formatMoney, isoDate, startOfDay, startOfWeek,
-} from "@/lib/utils";
+import { addDays, formatDuration, formatMoney, isoDate, startOfDay } from "@/lib/utils";
 
 /**
  * The Chief of Staff reads the Life OS through these tools rather than being

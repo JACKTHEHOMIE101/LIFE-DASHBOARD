@@ -12,11 +12,9 @@ import { cn } from "@/lib/utils";
 type Command = { id: string; label: string; hint?: string; run: () => void };
 
 export function CommandPalette({
-  open,
   onClose,
   onOpenCapture,
 }: {
-  open: boolean;
   onClose: () => void;
   onOpenCapture: () => void;
 }) {
@@ -60,29 +58,22 @@ export function CommandPalette({
     ...hits.map((hit) => ({ kind: "hit" as const, hit })),
   ];
 
+  // Focus only; this component is mounted fresh each time it opens.
   useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setHits([]);
-    setActive(0);
     const id = setTimeout(() => inputRef.current?.focus(), 40);
     return () => clearTimeout(id);
-  }, [open]);
+  }, []);
 
   // Debounced so typing does not fire a query per keystroke.
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
-      setHits([]);
-      return;
-    }
+    if (q.length < 2) return;
     const id = setTimeout(() => {
       startSearch(async () => setHits(await searchAction(q)));
     }, 160);
     return () => clearTimeout(id);
   }, [query]);
 
-  useEffect(() => setActive(0), [query]);
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "ArrowDown") {
@@ -101,7 +92,7 @@ export function CommandPalette({
   }
 
   return (
-    <Overlay open={open} onClose={onClose} labelledBy="palette-title">
+    <Overlay open onClose={onClose} labelledBy="palette-title">
       <h2 id="palette-title" className="sr-only">
         Search and commands
       </h2>
@@ -111,7 +102,12 @@ export function CommandPalette({
         <input
           ref={inputRef}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setQuery(next);
+            setActive(0);
+            if (next.trim().length < 2) setHits([]);
+          }}
           onKeyDown={onKeyDown}
           placeholder="Search everything, or type a command…"
           className="w-full bg-transparent text-[15px] text-ink placeholder:text-ink-subtle focus:outline-none"

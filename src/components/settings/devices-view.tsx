@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BellRing, Loader2, Smartphone, Trash2 } from "lucide-react";
 import { registerDevice, removeDevice } from "@/lib/actions/notifications";
@@ -59,19 +59,26 @@ export function DevicesView({
   pushConfigured: boolean;
 }) {
   const router = useRouter();
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setPermission("unsupported");
-      return;
-    }
-    setPermission(Notification.permission);
-  }, []);
+  /**
+   * The browser's own permission state, read through useSyncExternalStore so
+   * it is a genuine external read rather than state seeded by an effect. There
+   * is no event to subscribe to: it only changes when we ask for it, and the
+   * override below covers that case.
+   */
+  const ambient = useSyncExternalStore(
+    () => () => {},
+    () =>
+      "Notification" in window && "serviceWorker" in navigator && "PushManager" in window
+        ? (Notification.permission as NotificationPermission | "unsupported")
+        : "unsupported",
+    () => "default" as NotificationPermission | "unsupported",
+  );
+  const [granted, setGranted] = useState<NotificationPermission | null>(null);
+  const permission = granted ?? ambient;
 
   async function enablePush() {
     setError(null);
@@ -84,7 +91,7 @@ export function DevicesView({
 
     try {
       const result = await Notification.requestPermission();
-      setPermission(result);
+      setGranted(result);
       if (result !== "granted") {
         setError("Permission was not granted, so this device will not receive push.");
         return;

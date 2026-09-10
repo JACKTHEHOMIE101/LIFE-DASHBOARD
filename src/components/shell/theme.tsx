@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import {
+  createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore,
+} from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,12 +45,24 @@ export function ThemeProvider({
   children: React.ReactNode;
   defaultChoice?: ThemeChoice;
 }) {
-  const [choice, setChoiceState] = useState<ThemeChoice>(defaultChoice);
+  /**
+   * The stored preference is genuinely external state, so it is read through
+   * useSyncExternalStore rather than copied into React state by an effect.
+   * Subscribing to `storage` also keeps other tabs in step for free.
+   */
+  const stored = useSyncExternalStore(
+    (onChange) => {
+      window.addEventListener("storage", onChange);
+      return () => window.removeEventListener("storage", onChange);
+    },
+    () => (localStorage.getItem(STORAGE_KEY) as ThemeChoice | null) ?? defaultChoice,
+    () => defaultChoice,
+  );
 
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as ThemeChoice | null;
-    if (stored) setChoiceState(stored);
-  }, []);
+  // A choice made in this tab does not raise a `storage` event, so it is held
+  // locally until the next read agrees.
+  const [local, setLocal] = useState<ThemeChoice | null>(null);
+  const choice = local ?? stored;
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolve(choice);
@@ -63,8 +77,8 @@ export function ThemeProvider({
   }, [choice]);
 
   const setChoice = useCallback((next: ThemeChoice) => {
-    setChoiceState(next);
     localStorage.setItem(STORAGE_KEY, next);
+    setLocal(next);
   }, []);
 
   return <ThemeContext value={{ choice, setChoice }}>{children}</ThemeContext>;

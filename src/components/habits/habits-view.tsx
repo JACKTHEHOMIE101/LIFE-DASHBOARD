@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useOptimistic, useState, useTransition } from "react";
+import { useActionState, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Archive, Check, Flame, Loader2, Plus, Repeat } from "lucide-react";
@@ -148,15 +148,19 @@ export function HabitsView({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction] = useActionState(createHabit, { error: undefined });
-
-  useEffect(() => {
-    if (state && !state.error) {
-      router.refresh();
-      setOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  // Closing on success happens inside the action rather than in an effect
+  // watching its result, so the side effect sits at its cause.
+  const [state, formAction] = useActionState(
+    async (prev: { error?: string } | undefined, formData: FormData) => {
+      const result = await createHabit(prev, formData);
+      if (result && !result.error) {
+        router.refresh();
+        setOpen(false);
+      }
+      return result;
+    },
+    { error: undefined },
+  );
 
   return (
     <>

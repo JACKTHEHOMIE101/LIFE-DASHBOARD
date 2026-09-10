@@ -97,7 +97,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="space-y-5">
-          <TodaySchedule events={todayEvents} freeMinutes={remainingFree} />
+          <TodaySchedule events={todayEvents} freeMinutes={remainingFree} now={now} />
 
           <LifePulse areas={pulse.map((area) => ({ ...area, direction: areaDirection(area) }))} />
 

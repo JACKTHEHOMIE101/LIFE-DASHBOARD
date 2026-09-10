@@ -28,12 +28,10 @@ const EXAMPLES = [
 ];
 
 export function QuickCapture({
-  open,
   onClose,
   projects,
   lifeAreas,
 }: {
-  open: boolean;
   onClose: () => void;
   projects: PaletteProject[];
   lifeAreas: PaletteArea[];
@@ -54,17 +52,11 @@ export function QuickCapture({
   const type = override ?? parsed.type;
   const uncertain = parsed.confidence < CONFIRM_THRESHOLD && text.trim().length > 0;
 
+  // Focus only; this component is mounted fresh each time it opens.
   useEffect(() => {
-    if (!open) return;
-    setText("");
-    setOverride(null);
-    setProjectId("");
-    setLifeAreaId("");
-    setError(null);
-    setDone(null);
     const id = setTimeout(() => inputRef.current?.focus(), 40);
     return () => clearTimeout(id);
-  }, [open]);
+  }, []);
 
   function submit() {
     if (!text.trim() || pending) return;
@@ -105,7 +97,7 @@ export function QuickCapture({
         : null;
 
   return (
-    <Overlay open={open} onClose={onClose} labelledBy="quick-capture-title" className="max-w-lg">
+    <Overlay open onClose={onClose} labelledBy="quick-capture-title" className="max-w-lg">
       <div className="p-4">
         <h2 id="quick-capture-title" className="sr-only">
           Quick capture

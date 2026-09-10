@@ -18,11 +18,14 @@ const CATEGORY_ACCENT: Record<string, string> = {
 export function TodaySchedule({
   events,
   freeMinutes,
+  now,
 }: {
   events: CalendarEvent[];
   freeMinutes: number | null;
+  /** Passed in rather than read during render, so the component stays pure. */
+  now: Date;
 }) {
-  const now = Date.now();
+  const nowMs = now.getTime();
 
   return (
     <Card>
@@ -49,8 +52,8 @@ export function TodaySchedule({
       ) : (
         <ul className="border-t border-border px-5 py-1">
           {events.map((event) => {
-            const past = event.endsAt.getTime() < now;
-            const current = !past && event.startsAt.getTime() <= now;
+            const past = event.endsAt.getTime() < nowMs;
+            const current = !past && event.startsAt.getTime() <= nowMs;
             return (
               <li key={event.id} className="flex items-start gap-3 py-2">
                 <time
