@@ -176,42 +176,63 @@ export type TrailingCashflow = {
  * month-to-date figure on the 9th reports "no income" for anyone paid at the
  * end of the month — technically true, and completely useless.
  */
+export type RangeCashflow = {
+  incomeMinor: number;
+  /** Actual spending, with savings and investment transfers excluded. */
+  expenseMinor: number;
+  transferredMinor: number;
+  savingsRate: number | null;
+};
+
+/**
+ * Income, spending and savings rate over an arbitrary half-open date range.
+ * Every other cashflow figure in the app is built from this, so a review and
+ * the dashboard can never disagree about what a period contained.
+ */
+export async function getCashflowForRange(
+  userId: string,
+  fromISO: string,
+  toISO: string,
+): Promise<RangeCashflow> {
+  const [row] = await db
+    .select({
+      income: sql<number>`sum(case when ${transactions.amountMinor} > 0 then ${transactions.amountMinor} else 0 end)`,
+      expense: sql<number>`sum(case when ${transactions.amountMinor} < 0 then -${transactions.amountMinor} else 0 end)`,
+      // Money moved into savings or investments has left the current account
+      // but has not been spent. Counting it as an expense would make saving
+      // more look like saving less, which is exactly backwards.
+      transferred: sql<number>`sum(case when ${transactions.amountMinor} < 0 and ${transactions.category} = ${SAVINGS_CATEGORY} then -${transactions.amountMinor} else 0 end)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        isNull(transactions.deletedAt),
+        gte(transactions.date, fromISO),
+        lt(transactions.date, toISO),
+      ),
+    );
+
+  const incomeMinor = Number(row?.income ?? 0);
+  const transferredMinor = Number(row?.transferred ?? 0);
+  const spentMinor = Number(row?.expense ?? 0) - transferredMinor;
+
+  return {
+    incomeMinor,
+    expenseMinor: spentMinor,
+    transferredMinor,
+    savingsRate: incomeMinor > 0 ? (incomeMinor - spentMinor) / incomeMinor : null,
+  };
+}
+
 export async function getTrailingCashflow(userId: string): Promise<TrailingCashflow> {
   const today = startOfDay(new Date());
+  const at = (offset: number) => isoDate(addDays(today, offset));
 
-  async function window(fromOffset: number, toOffset: number) {
-    const [row] = await db
-      .select({
-        income: sql<number>`sum(case when ${transactions.amountMinor} > 0 then ${transactions.amountMinor} else 0 end)`,
-        expense: sql<number>`sum(case when ${transactions.amountMinor} < 0 then -${transactions.amountMinor} else 0 end)`,
-        // Money moved into savings or investments has left the current account
-        // but has not been spent. Counting it as an expense would make saving
-        // more look like saving less, which is exactly backwards.
-        transferred: sql<number>`sum(case when ${transactions.amountMinor} < 0 and ${transactions.category} = ${SAVINGS_CATEGORY} then -${transactions.amountMinor} else 0 end)`,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          isNull(transactions.deletedAt),
-          gte(transactions.date, isoDate(addDays(today, fromOffset))),
-          lt(transactions.date, isoDate(addDays(today, toOffset))),
-        ),
-      );
-
-    const incomeMinor = Number(row?.income ?? 0);
-    const transferredMinor = Number(row?.transferred ?? 0);
-    const spentMinor = Number(row?.expense ?? 0) - transferredMinor;
-
-    return {
-      incomeMinor,
-      expenseMinor: spentMinor,
-      transferredMinor,
-      savingsRate: incomeMinor > 0 ? (incomeMinor - spentMinor) / incomeMinor : null,
-    };
-  }
-
-  const [recent, prior] = await Promise.all([window(-30, 1), window(-60, -30)]);
+  const [recent, prior] = await Promise.all([
+    getCashflowForRange(userId, at(-30), at(1)),
+    getCashflowForRange(userId, at(-60), at(-30)),
+  ]);
 
   return {
     incomeMinor: recent.incomeMinor,

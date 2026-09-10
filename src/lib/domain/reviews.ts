@@ -3,9 +3,9 @@ import "server-only";
 import { and, count, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { habitEntries, journalEntries, projects, tasks } from "@/db/schema";
-import { addDays, formatDuration, isoDate, mean, pct, startOfWeek } from "@/lib/utils";
+import { addDays, formatDuration, formatMoney, isoDate, mean, pct, startOfWeek } from "@/lib/utils";
 import { analyseEvents, getEventsBetween } from "./calendar";
-import { getCashflow, getSpendingAnomalies } from "./finances";
+import { getCashflowForRange, getSpendingAnomalies } from "./finances";
 import { listGoals } from "./goals";
 import { getMetricTrend, getWorkoutStats } from "./health";
 import { listProjects } from "./projects";
@@ -21,7 +21,12 @@ export type ReviewStats = {
   time: { label: string; minutes: number; intended: number | null }[];
   calendar: { meetingMinutes: number; focusMinutes: number; overloadedDays: number };
   health: { label: string; value: string; change: string | null }[];
-  money: { savingsRate: number | null; anomalies: string[] };
+  money: {
+    savingsRate: number | null;
+    incomeMinor: number;
+    spentMinor: number;
+    anomalies: string[];
+  };
   habits: { name: string; hit: number; possible: number }[];
   journal: { entries: number; averageMood: number | null };
   neglectedAreas: string[];
@@ -87,7 +92,7 @@ export async function buildReviewStats(
     listGoals(userId, { statuses: ["active"] }),
     getEventsBetween(userId, start, end),
     getTimeAnalytics(userId, type === "weekly" ? "week" : "month", weekStartsOn),
-    getCashflow(userId, 3),
+    getCashflowForRange(userId, isoDate(start), isoDate(end)),
     getSpendingAnomalies(userId),
     getMetricTrend(userId, "sleep_minutes"),
     getWorkoutStats(userId),
@@ -119,7 +124,6 @@ export async function buildReviewStats(
   const touchedAreaIds = new Set(completedRows.map((t) => t.lifeAreaId).filter(Boolean));
 
   const analytics = analyseEvents(events, start, type === "weekly" ? 7 : 30);
-  const currentMonth = cashflow.at(-1);
 
   const { habits, lifeAreas } = await import("@/db/schema");
   const [habitList, areaList] = await Promise.all([
@@ -181,8 +185,10 @@ export async function buildReviewStats(
         : { label: "Workouts", value: "None recorded", change: null },
     ],
     money: {
-      savingsRate: currentMonth?.savingsRate ?? null,
-      anomalies: anomalies.map((a) => `${a.label} ${pct(a.changePct, 0)} above average`),
+      savingsRate: cashflow.savingsRate,
+      incomeMinor: cashflow.incomeMinor,
+      spentMinor: cashflow.expenseMinor,
+      anomalies: anomalies.map((a) => `${a.label} is ${pct(a.changePct, 0)} above its baseline.`),
     },
     habits: habitList.map((h) => ({
       name: h.name,
@@ -224,7 +230,7 @@ export function draftSections(stats: ReviewStats, type: ReviewType): Record<stri
       ? `No recent progress on ${stats.goals.neglected.join(", ")}.`
       : "",
     stats.calendar.overloadedDays > 0
-      ? `${stats.calendar.overloadedDays} day${stats.calendar.overloadedDays === 1 ? "" : "s"} were heavily booked with meetings.`
+      ? `${stats.calendar.overloadedDays} ${stats.calendar.overloadedDays === 1 ? "day was" : "days were"} heavily booked with meetings.`
       : "",
     ...stats.money.anomalies,
   ].filter(Boolean);
@@ -248,11 +254,14 @@ export function draftSections(stats: ReviewStats, type: ReviewType): Record<stri
     time: time.join("\n"),
     health: stats.health.map((h) => `${h.label}: ${h.value}${h.change ? ` (${h.change})` : ""}.`).join("\n"),
     money:
-      stats.money.savingsRate !== null
-        ? `Savings rate ${Math.round(stats.money.savingsRate * 100)}%.${
-            stats.money.anomalies.length ? ` ${stats.money.anomalies.join(" ")}` : ""
-          }`
-        : "No income recorded this period, so no savings rate to report.",
+      [
+        stats.money.savingsRate !== null
+          ? `Savings rate ${Math.round(stats.money.savingsRate * 100)}% for the period.`
+          : // A single week rarely contains a payday, so spending is the
+            // figure worth reporting rather than an undefined ratio.
+            `${formatMoney(stats.money.spentMinor)} spent. No income landed in this period, so there is no savings rate for it.`,
+        ...stats.money.anomalies,
+      ].join(" "),
     neglected: stats.neglectedAreas.length
       ? `No completed work in: ${stats.neglectedAreas.join(", ")}.`
       : "Every life area saw some activity.",
