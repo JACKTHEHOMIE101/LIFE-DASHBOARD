@@ -1,0 +1,34 @@
+name: Send due notifications
+
+# Vercel's Hobby plan only allows one cron run per day, which is useless for
+# reminders. GitHub Actions runs this every fifteen minutes for free instead.
+#
+# Two things to know: scheduled workflows can be delayed by several minutes
+# when GitHub is busy, and GitHub disables schedules on repositories with no
+# activity for 60 days. Neither matters much for a personal reminder system,
+# but a missed nudge is usually one of those two.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the notification run
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL or CRON_SECRET repository secret is not set."
+            exit 1
+          fi
+
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 60 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/notifications")
+
+          echo "$response"

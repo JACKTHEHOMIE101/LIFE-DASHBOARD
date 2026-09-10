@@ -187,6 +187,7 @@ from Settings.
 | `AUTH_SECRET` | **Yes** | Signs session cookies. `npm run generate:secret` |
 | `ANTHROPIC_API_KEY` | No | Enables the reasoning Chief of Staff and review narratives |
 | `ANTHROPIC_MODEL` | No | Defaults to `claude-opus-5` |
+| `CRON_SECRET` | For scheduled notifications | Protects `/api/cron/notifications`. See DEPLOY.md |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | No | Web push. `npm run generate:vapid` |
 | `VAPID_PRIVATE_KEY` | No | Web push |
 | `VAPID_SUBJECT` | No | Contact address for push |
@@ -202,12 +203,14 @@ notifications stay in-app.
 
 1. **No integration adapters.** The framework is real and tested; the
    per-provider code and OAuth credentials are not written.
-2. **Notifications are generated on view, not by a scheduler.** Generation and
-   delivery are idempotent and run when the notification centre or dashboard is
-   loaded. Real background delivery needs a cron or queue calling
-   `generateNotifications` and `deliverDueNotifications`.
-3. **Morning and evening briefings are configurable but not dispatched** — same
-   missing scheduler.
+2. **Notifications only reach a phone once the app is deployed.** The scheduler
+   endpoint (`/api/cron/notifications`) and a GitHub Actions workflow now
+   exist, but on localhost nothing can call them and the laptop has to be
+   awake. See `DEPLOY.md`. On iOS, push additionally requires the PWA to be
+   added to the Home Screen — it never works from a Safari tab.
+3. **Morning and evening briefings are configurable but not dispatched.** The
+   scheduler runs the reminder rules; the two briefing digests are not wired
+   into it yet.
 4. **Offline is read-mostly.** The service worker caches an app shell and
    visited pages; the offline write queue described in the UI is not
    implemented, so captures made offline are not yet replayed.

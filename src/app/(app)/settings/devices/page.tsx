@@ -7,6 +7,7 @@ import { devices } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { pushConfigured } from "@/lib/notifications/push";
 import { DevicesView } from "@/components/settings/devices-view";
+import { InstallGuide } from "@/components/settings/install-guide";
 import { PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Devices" };
@@ -33,6 +34,10 @@ export default async function DevicesPage() {
         title="Devices"
         description="Every browser or phone registered for push. Removing one revokes it immediately."
       />
+
+      <div className="mb-5 empty:mb-0">
+        <InstallGuide />
+      </div>
 
       <DevicesView
         devices={rows.map((d) => ({

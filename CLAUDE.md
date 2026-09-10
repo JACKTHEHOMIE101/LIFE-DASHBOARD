@@ -98,6 +98,17 @@ project id. Keep the primary out of the join table in the write path
 (`setExtraGoals`) so the two can never disagree about which goal is the
 headline one.
 
+## The scheduler
+
+`/api/cron/notifications` is the only thing that makes notifications arrive
+without the app being open. It is protected by `CRON_SECRET` and refuses to
+run at all if that is unset. Everything it calls is idempotent, so calling it
+more often is safe and calling it twice is harmless.
+
+Vercel Hobby allows one cron run a day, so the real cadence lives in
+`.github/workflows/notifications.yml` (every 15 minutes). Deployment steps are
+in `DEPLOY.md`.
+
 ## Things that will bite you
 
 - **Grid overflow on mobile.** Grid items default to `min-width: auto`. Every
