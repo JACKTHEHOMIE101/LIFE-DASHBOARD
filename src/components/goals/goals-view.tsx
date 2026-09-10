@@ -223,6 +223,15 @@ function GoalCard({ goal, onEdit }: { goal: GoalSummary; onEdit: () => void }) {
             </p>
           ) : null}
         </div>
+      ) : goal.targetValue !== null ? (
+        // A target exists but there is no reading yet. That is a different
+        // state from having no metric at all, and saying so tells the reader
+        // exactly what is missing.
+        <p className="mt-3 text-[12px] text-ink-subtle">
+          Aiming for {goal.targetValue.toLocaleString()}
+          {goal.metricUnit && goal.metricUnit !== "USD" ? ` ${goal.metricUnit}` : ""}. Add where you
+          are now to start tracking progress.
+        </p>
       ) : (
         <p className="mt-3 text-[12px] text-ink-subtle">
           No metric set, so progress cannot be measured. Add one to track it honestly.
