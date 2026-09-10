@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 coverage/
 .tmp/
+
+.vercel
+.env*

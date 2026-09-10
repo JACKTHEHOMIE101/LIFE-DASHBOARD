@@ -10,8 +10,28 @@ import * as schema from "./schema";
  * This module deliberately has no `server-only` guard so that CLI scripts
  * (migrate, seed, reset) can reuse it. Application code imports `@/db` instead.
  */
-const url = process.env.DATABASE_URL ?? "file:./data/life-os.db";
-const authToken = process.env.DATABASE_AUTH_TOKEN;
+
+// An empty string is what a mis-pasted hosting variable looks like, and `??`
+// would happily pass it through to a connection error 20 frames deep. Treat
+// blank as absent.
+const value = (key: string) => {
+  const raw = process.env[key]?.trim();
+  return raw ? raw : undefined;
+};
+
+// Vercel's Turso integration provisions the database under its own names. Read
+// those as a fallback so a correct integration setup works without also having
+// to duplicate the values by hand.
+const url =
+  value("DATABASE_URL") ?? value("STORAGE_TURSO_DATABASE_URL") ?? "file:./data/life-os.db";
+const authToken = value("DATABASE_AUTH_TOKEN") ?? value("STORAGE_TURSO_AUTH_TOKEN");
+
+if (url.startsWith("libsql://") && !authToken) {
+  throw new Error(
+    "DATABASE_URL points at a hosted libSQL database but DATABASE_AUTH_TOKEN is empty. " +
+      "Set both, or neither to fall back to the local file.",
+  );
+}
 
 declare global {
   var __lifeOsClient: Client | undefined;
