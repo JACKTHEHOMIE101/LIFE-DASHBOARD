@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -37,18 +36,19 @@ export default async function ChiefOfStaffPage() {
         description="Reasons over your Life OS data and cites what it used. It proposes actions; you confirm them."
       />
 
-      <Suspense fallback={null}>
-        <ChiefOfStaffChat
-          configured={aiConfigured()}
-          initialConversationId={latest?.id ?? null}
-          initialMessages={messages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.content,
-            citations: m.citations,
-          }))}
-        />
-      </Suspense>
+      {/* No Suspense boundary here: the page is force-dynamic, so there is
+          nothing to stream around, and an unresolved boundary would render
+          the chat as a blank page. */}
+      <ChiefOfStaffChat
+        configured={aiConfigured()}
+        initialConversationId={latest?.id ?? null}
+        initialMessages={messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          text: m.content,
+          citations: m.citations,
+        }))}
+      />
     </div>
   );
 }
