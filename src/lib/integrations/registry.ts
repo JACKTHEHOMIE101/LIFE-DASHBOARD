@@ -17,7 +17,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     authKind: "oauth2",
     scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
     reads: ["Event titles, times and locations", "Attendee names", "Which calendar each event belongs to"],
-    status: "planned",
+    status: "available",
     incremental: true,
   },
   {

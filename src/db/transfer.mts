@@ -56,6 +56,7 @@ const TABLES = [
   "transactions",
   "reviews",
   "integrations",
+  "integration_credentials",
   "sync_records",
   "notifications",
   "notification_preferences",

@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { userSettings } from "@/db/schema";
 import { deliverDueNotifications } from "@/lib/notifications/engine";
 import { generateNotifications } from "@/lib/notifications/generators";
+import { syncAllForUser } from "@/lib/integrations/sync";
 
 /**
  * The scheduler.
@@ -49,17 +50,29 @@ export async function GET(request: Request) {
     delivered: number;
     suppressed: number;
     dropped: number;
+    synced: { provider: string; message: string }[];
     clock: Clock;
   }[] = [];
 
   for (const user of rows) {
     try {
+      /*
+       * Sync before generating, so a meeting added to Google an hour ago can
+       * still produce a reminder on this run rather than the next one. A
+       * failing provider must not stop notifications: runSync reports failure
+       * in its return value and records it, rather than throwing.
+       */
+      const synced = (await syncAllForUser(user.id)).map((s) => ({
+        provider: s.provider,
+        message: s.outcome.message,
+      }));
+
       const { created } = await generateNotifications(user.id, user.weekStartsOn ?? 1);
       const { delivered, suppressed, dropped, clock } = await deliverDueNotifications(user.id);
-      results.push({ userId: user.id, created, delivered, suppressed, dropped, clock });
+      results.push({ userId: user.id, created, delivered, suppressed, dropped, synced, clock });
     } catch (error) {
       // One user failing must not stop the rest, and the run must still report.
-      results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0, dropped: 0, clock: null });
+      results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0, dropped: 0, synced: [], clock: null });
       console.error(`notification run failed for ${user.id}`, error);
     }
   }
@@ -72,6 +85,7 @@ export async function GET(request: Request) {
     suppressedByQuietHours: results.reduce((n, r) => n + r.suppressed, 0),
     // Reminders whose task or event no longer exists, dismissed rather than sent.
     droppedAsOrphaned: results.reduce((n, r) => n + r.dropped, 0),
+    synced: results.flatMap((r) => r.synced),
     // Without these a suppressed run is indistinguishable from a broken one.
     clocks: results.map((r) => r.clock).filter(Boolean),
     server: {

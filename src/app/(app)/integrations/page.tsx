@@ -5,13 +5,23 @@ import { db } from "@/db";
 import { integrations, syncRecords } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { AUTH_LABEL, DOMAIN_LABEL, providersByDomain } from "@/lib/integrations/registry";
+import { adapterReady, getAdapter } from "@/lib/integrations/adapters";
+import { ProviderControls } from "@/components/integrations/provider-controls";
 import { Badge, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Integrations" };
 
-export default async function IntegrationsPage() {
+export default async function IntegrationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; connected?: string }>;
+}) {
   const user = await requireUser();
+  // The OAuth callback cannot render anything itself, so it reports back
+  // through the URL. Swallowing this would leave a failed connection looking
+  // like a page that simply did not do anything.
+  const { error: connectError, connected: justConnected } = await searchParams;
   const [connected, recentSyncs] = await Promise.all([
     db.select().from(integrations).where(eq(integrations.userId, user.id)),
     db
@@ -32,6 +42,25 @@ export default async function IntegrationsPage() {
         description="Providers feed a normalised model. Nothing in the app is coupled to any one of them."
       />
 
+      {connectError ? (
+        <div
+          role="alert"
+          className="mb-5 rounded-xl border border-critical/30 bg-critical-soft px-4 py-3 text-[13px] text-critical"
+        >
+          <p className="font-medium">That connection did not complete</p>
+          <p className="mt-0.5">{connectError}</p>
+        </div>
+      ) : null}
+
+      {justConnected ? (
+        <div className="mb-5 rounded-xl border border-positive/30 bg-positive-soft px-4 py-3 text-[13px] text-positive">
+          <p className="font-medium">Connected</p>
+          <p className="mt-0.5">
+            Nothing has been imported yet — press Sync now to pull your calendar for the first time.
+          </p>
+        </div>
+      ) : null}
+
       <Card className="mb-5 p-4">
         <div className="flex items-start gap-3">
           <Lock className="mt-0.5 size-4 shrink-0 text-ink-subtle" />
@@ -50,12 +79,12 @@ export default async function IntegrationsPage() {
         <div className="flex items-start gap-3">
           <Plug className="mt-0.5 size-4 shrink-0 text-ink-subtle" />
           <div className="text-[13px] text-ink-muted">
-            <p className="font-medium text-ink">Adapters are not implemented yet</p>
+            <p className="font-medium text-ink">One adapter is built</p>
             <p className="mt-1">
-              The framework is complete: normalised models, provider/external-id provenance on every
-              imported record, incremental sync cursors, sync history and error reporting. What is
-              missing is the per-provider code and OAuth credentials. Until then, sample data and
-              anything you enter by hand behave identically throughout the app.
+              Google Calendar is implemented end to end: consent, refreshable tokens, incremental
+              sync and deletions. Every other provider below is listed because the data model and
+              sync bookkeeping already accommodate it — the per-provider code is not written, and
+              those show no Connect button rather than one that leads nowhere.
             </p>
           </div>
         </div>
@@ -74,8 +103,22 @@ export default async function IntegrationsPage() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium text-ink">{provider.name}</span>
-                          <Badge tone={record?.status === "connected" ? "positive" : "neutral"}>
-                            {record?.status === "connected" ? "Connected" : "Not connected"}
+                          <Badge
+                            tone={
+                              record?.status === "connected"
+                                ? "positive"
+                                : record?.status === "error"
+                                  ? "critical"
+                                  : "neutral"
+                            }
+                          >
+                            {record?.status === "connected"
+                              ? "Connected"
+                              : record?.status === "error"
+                                ? "Needs attention"
+                                : getAdapter(provider.id)
+                                  ? "Not connected"
+                                  : "Adapter not built"}
                           </Badge>
                           <Badge tone="neutral">{AUTH_LABEL[provider.authKind]}</Badge>
                           {provider.incremental ? (
@@ -100,11 +143,23 @@ export default async function IntegrationsPage() {
                         </details>
                       </div>
 
-                      <span className="shrink-0 text-[12px] text-ink-subtle">
-                        {record?.lastSyncAt
-                          ? `Synced ${formatDate(record.lastSyncAt)}`
-                          : "Adapter not built"}
-                      </span>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        {getAdapter(provider.id) ? (
+                          <ProviderControls
+                            provider={provider.id}
+                            connectHref={`/api/integrations/${provider.id.replace(/_/g, "-")}/connect`}
+                            connected={record?.status === "connected" || record?.status === "error"}
+                            ready={adapterReady(provider.id)}
+                          />
+                        ) : null}
+                        <span className="text-[12px] text-ink-subtle">
+                          {record?.lastSyncAt
+                            ? `Synced ${formatDate(record.lastSyncAt)}`
+                            : getAdapter(provider.id)
+                              ? "Never synced"
+                              : "Adapter not built"}
+                        </span>
+                      </div>
                     </div>
 
                     {record?.lastError ? (

@@ -63,9 +63,19 @@ strings so the UI can explain it.
 
 **A new integration**: implement `ProviderAdapter` from
 `src/lib/integrations/types.ts`, add a `ProviderDefinition` to `registry.ts`,
-and upsert on `(provider, externalId)`. Touch nothing else — no schema change,
-no UI change. Credentials go to a server-side store; only `credentialRef` is
-persisted.
+and register it in `adapters.ts`. Touch nothing else — no schema change, no UI
+change. `src/lib/integrations/providers/google-calendar.ts` is the worked
+example; copy its shape.
+
+Two rules the adapter layer enforces:
+
+- **An adapter never touches the database.** It is handed credentials and a
+  cursor and returns normalised records. That is what lets `sync.ts` own token
+  refresh, upserts and bookkeeping once instead of once per provider.
+- **Credentials live in `integration_credentials`, encrypted** with a key
+  derived from `AUTH_SECRET` (`crypto.ts`). The `integrations` table holds only
+  `credentialRef`. Reads are scoped by user id, so a leaked reference alone
+  cannot retrieve a token.
 
 **A new notification**: add a rule to `src/lib/notifications/generators.ts` with
 a `dedupeKey` derived from the source row and the lead time. Generation must
@@ -109,6 +119,18 @@ Vercel Hobby allows one cron run a day, so the real cadence lives in
 `.github/workflows/notifications.yml` (every 15 minutes). Deployment steps are
 in `DEPLOY.md`.
 
+## OAuth
+
+`state` is a signed JWT carrying the user id, not a random value in a session.
+The callback deliberately does **not** call `requireUser`: the owner comes from
+the state, so an authorisation code can only ever attach to the account that
+started the flow.
+
+The redirect URI is built in one place (`redirect-uri.ts`) and preferred from
+`APP_URL`, because it has to be byte-identical across the authorise request,
+the token exchange and what is registered at the provider — and a hosting
+platform's per-deployment hostname is none of those.
+
 ## Things that will bite you
 
 - **The server's clock is not the user's clock.** Hosted, the runtime is UTC,
@@ -118,6 +140,10 @@ in `DEPLOY.md`.
   (Vercel reserves `TZ` itself), which is sound only because this is
   single-user. `inQuietHours` takes an explicit zone regardless, and is the
   pattern to follow if the domain layer ever needs to serve two clocks.
+
+- **Google's all-day end date is exclusive.** An event on the 14th arrives as
+  start 14th, end 15th. Stored literally it spans two days everywhere in the
+  app. `normaliseGoogleEvent` pulls it back by a millisecond.
 
 - **Grid overflow on mobile.** Grid items default to `min-width: auto`. Every
   responsive grid needs an explicit `grid-cols-[minmax(0,1fr)]` base track or

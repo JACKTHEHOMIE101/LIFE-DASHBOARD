@@ -124,6 +124,44 @@ Requires iOS 16.4 or later.
 
 ---
 
+## 5. Google Calendar
+
+Twenty minutes at console.cloud.google.com, then it syncs by itself.
+
+1. **Create a project** — any name.
+2. **APIs & Services → Library → Google Calendar API → Enable.** Without this
+   step every sync returns 403 with a message about the API being disabled.
+3. **APIs & Services → OAuth consent screen.** Choose **External**, fill in the
+   app name and your own email. Add yourself under **Test users** — an app in
+   testing only works for accounts listed there, and this one never needs to
+   leave testing.
+4. **Credentials → Create credentials → OAuth client ID → Web application.**
+   Under *Authorized redirect URIs* add this, exactly:
+
+   ```
+   https://your-app.vercel.app/api/integrations/google-calendar/callback
+   ```
+
+   No trailing slash. Google compares it byte for byte and rejects anything
+   else with `redirect_uri_mismatch`.
+5. Copy the client id and secret into Vercel:
+
+   ```bash
+   vercel env add GOOGLE_CLIENT_ID production
+   vercel env add GOOGLE_CLIENT_SECRET production
+   vercel env add APP_URL production        # https://your-app.vercel.app
+   ```
+
+   `APP_URL` matters: without it the redirect is built from whatever hostname
+   the request arrived on, and a deployment-specific Vercel hostname is not the
+   one you registered.
+6. Redeploy, then **Integrations → Google Calendar → Connect**.
+
+A connection in Google's *testing* mode expires its refresh token after seven
+days. When it does, the integration reports "Google has revoked this
+connection" rather than going quiet, and reconnecting fixes it. Publishing the
+consent screen removes the expiry.
+
 ## Checking it actually works
 
 ```bash

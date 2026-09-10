@@ -37,13 +37,13 @@ can be dismissed, snoozed, investigated, turned into a task, or handed to the AI
 | Reviews | Weekly and monthly, deterministic stats + editable narrative |
 | Chief of Staff | Tool-using AI over your own data, with citations and confirm-before-write |
 | Notifications | Engine, centre, per-category preferences, quiet hours, push, deep links |
-| Integrations | Full adapter framework; 17 providers defined, adapters not yet written |
+| Integrations | Adapter framework; 17 providers defined, Google Calendar implemented end to end |
 | PWA | Installable, offline shell, push, generated icons |
 | Global | Command palette, quick capture, global search, dark/light, mobile-first |
 
-**Not built:** live integration adapters (framework only), semantic/vector
-search (schema reserved), native app packaging (architecture supports it),
-focus-session timer UI (model and analytics exist).
+**Not built:** every integration adapter except Google Calendar (framework
+only), semantic/vector search (schema reserved), native app packaging
+(architecture supports it), focus-session timer UI (model and analytics exist).
 
 ---
 
@@ -96,7 +96,7 @@ with no code change, which is the path to real cross-device sync.
 
 ## 3. Database schema
 
-32 tables. Highlights rather than an exhaustive list:
+34 tables. Highlights rather than an exhaustive list:
 
 **Core** `users` · `user_settings` · `devices` · `life_areas` · `goals` ·
 `projects` · `milestones` · `tasks` · `events`
@@ -124,13 +124,22 @@ Three conventions matter:
 
 ## 4. Current integrations
 
-None are live. The framework is complete and exercised by tests: normalised
-record types, adapter contract, incremental sync cursors, sync history with
+**Google Calendar** is implemented end to end: OAuth consent, refresh-token
+rotation, incremental sync by per-calendar sync token, expansion of recurring
+events, deletion handling, and revocation on disconnect. It syncs on the same
+schedule as notifications, so a meeting added an hour ago can still produce a
+reminder. Setup is in `DEPLOY.md`.
+
+No other adapter is written. The framework around them is real: normalised
+record types, the adapter contract, incremental cursors, sync history with
 error reporting, and idempotent upsert by `(provider, external_id)`.
 
-Credentials are never stored in this database — `integrations.credential_ref`
-holds an opaque pointer to a server-side secret store, and nothing
-credential-shaped is ever sent to the browser or included in an export.
+Credentials are never readable from the main tables. `integrations.credential_ref`
+is an opaque pointer into `integration_credentials`, where tokens are encrypted
+with AES-256-GCM under a key derived from `AUTH_SECRET` — so a copy of the
+database alone does not yield a live account. Reads are scoped by user id,
+nothing credential-shaped reaches the browser, and disconnecting revokes the
+grant at the provider before deleting the reference.
 
 ## 5. Integrations the architecture supports
 
@@ -170,7 +179,7 @@ from Settings.
 |---|---|
 | `npm run dev` | Development server |
 | `npm run build` / `start` | Production build and serve |
-| `npm test` | 68 unit and integration tests |
+| `npm test` | 83 unit and integration tests |
 | `npm run db:generate` / `db:migrate` | Create and apply migrations |
 | `npm run db:seed` / `db:reset` | Reseed demo data / drop all tables |
 | `npm run generate:secret` / `generate:vapid` | Auth and push keys |
@@ -192,6 +201,10 @@ from Settings.
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | No | Web push. `npm run generate:vapid` |
 | `VAPID_PRIVATE_KEY` | No | Web push |
 | `VAPID_SUBJECT` | No | Contact address for push |
+| `APP_TIMEZONE` | Hosted: yes | The clock quiet hours and day boundaries use. Vercel reserves `TZ` |
+| `APP_URL` | For OAuth | Canonical URL; OAuth redirects must match the provider exactly |
+| `GOOGLE_CLIENT_ID` | For Google Calendar | OAuth client from console.cloud.google.com |
+| `GOOGLE_CLIENT_SECRET` | For Google Calendar | OAuth client secret |
 
 Everything optional degrades honestly rather than breaking: with no API key the
 Chief of Staff returns a labelled readout of your real data and reviews are
@@ -202,8 +215,9 @@ notifications stay in-app.
 
 ## 8. Known limitations
 
-1. **No integration adapters.** The framework is real and tested; the
-   per-provider code and OAuth credentials are not written.
+1. **One integration adapter.** Google Calendar is live; the other sixteen
+   providers are defined but have no per-provider code. Calendar sync is
+   read-only — Life OS does not write events back to Google.
 2. **Notifications only reach a phone once the app is deployed.** The scheduler
    endpoint (`/api/cron/notifications`) and a GitHub Actions workflow now
    exist, but on localhost nothing can call them and the laptop has to be
@@ -229,20 +243,18 @@ notifications stay in-app.
 
 ## 9. Recommended next steps
 
-1. **Google Calendar first.** It is the highest-value integration and it proves
-   the adapter contract end to end, including incremental cursors and conflict
-   handling.
-2. **A scheduler.** A single cron hitting a protected route unlocks real push,
-   morning/evening briefings and proactive AI in one move.
-3. **Offline write queue.** Persist captures to IndexedDB and replay through the
+1. **Two-way calendar sync.** Reading is done; writing back would let a task
+   scheduled in Life OS appear on the phone's calendar. It needs a conflict
+   rule, which is why it was not done first.
+2. **Offline write queue.** Persist captures to IndexedDB and replay through the
    existing server actions on reconnect, with last-write-wins per field and no
    silent overwrite of newer data.
-4. **Plaid, then a health provider.** These make Life Pulse's money and health
+3. **Plaid, then a health provider.** These make Life Pulse's money and health
    models genuinely useful rather than demo-shaped.
-5. **Focus timer UI** over the existing `focus_sessions` model, which would make
+4. **Focus timer UI** over the existing `focus_sessions` model, which would make
    intended-vs-actual time real rather than calendar-derived.
-6. **Semantic search** — add an embedding column and rank inside `globalSearch`.
-7. **Capacitor wrapper** once push and offline are solid; the API and domain
+5. **Semantic search** — add an embedding column and rank inside `globalSearch`.
+6. **Capacitor wrapper** once push and offline are solid; the API and domain
    layers are already independent of the web UI.
 
 ---
@@ -253,10 +265,12 @@ notifications stay in-app.
 npm test
 ```
 
-68 tests. Unit tests cover the capture parser, goal and project progress, habit
+83 tests. Unit tests cover the capture parser, goal and project progress, habit
 streaks, calendar analytics and free slots, quiet-hours wraparound and date
 helpers. Integration tests run against a migrated SQLite file and cover
-provisioning idempotency, the task/project lifecycle, soft deletion, sync upsert
+credential encryption (including refusing tampered ciphertext), Google event
+normalisation, provisioning idempotency, the task/project lifecycle, soft
+deletion, sync upsert
 by `(provider, external_id)`, notification dedupe including not resurrecting a
 dismissed notification, password hashing, session tampering, and demo
 seed/clear.

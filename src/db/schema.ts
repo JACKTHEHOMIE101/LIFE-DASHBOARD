@@ -505,6 +505,23 @@ export const integrations = sqliteTable("integrations", {
   ...timestamps,
 }, (t) => [uniqueIndex("integrations_user_provider_idx").on(t.userId, t.provider)]);
 
+/**
+ * The server-side credential store that `integrations.credential_ref` points at.
+ *
+ * Kept out of the integrations table so that table stays safe to read widely,
+ * and encrypted with a key derived from AUTH_SECRET so a copy of the database
+ * on its own does not hand anyone a live Google account. One row per
+ * integration: reconnecting replaces the tokens rather than accumulating them.
+ */
+export const integrationCredentials = sqliteTable("integration_credentials", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  integrationId: text("integration_id").notNull().references(() => integrations.id, { onDelete: "cascade" }),
+  /** iv, auth tag and ciphertext, base64, colon-separated. Never leaves the server. */
+  ciphertext: text("ciphertext").notNull(),
+  ...timestamps,
+}, (t) => [uniqueIndex("integration_credentials_idx").on(t.integrationId)]);
+
 export const syncRecords = sqliteTable("sync_records", {
   id: id(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -666,6 +683,7 @@ export type Transaction = typeof transactions.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type SyncRecord = typeof syncRecords.$inferSelect;
+export type IntegrationCredential = typeof integrationCredentials.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 export type AiConversation = typeof aiConversations.$inferSelect;
