@@ -42,16 +42,23 @@ export async function GET(request: Request) {
     .leftJoin(userSettings, eq(userSettings.userId, users.id))
     .where(isNull(users.deletedAt));
 
-  const results: { userId: string; created: number; delivered: number; suppressed: number }[] = [];
+  type Clock = { timezone: string; localTime: string; quiet: boolean } | null;
+  const results: {
+    userId: string;
+    created: number;
+    delivered: number;
+    suppressed: number;
+    clock: Clock;
+  }[] = [];
 
   for (const user of rows) {
     try {
       const { created } = await generateNotifications(user.id, user.weekStartsOn ?? 1);
-      const { delivered, suppressed } = await deliverDueNotifications(user.id);
-      results.push({ userId: user.id, created, delivered, suppressed });
+      const { delivered, suppressed, clock } = await deliverDueNotifications(user.id);
+      results.push({ userId: user.id, created, delivered, suppressed, clock });
     } catch (error) {
       // One user failing must not stop the rest, and the run must still report.
-      results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0 });
+      results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0, clock: null });
       console.error(`notification run failed for ${user.id}`, error);
     }
   }
@@ -62,6 +69,12 @@ export async function GET(request: Request) {
     created: results.reduce((n, r) => n + r.created, 0),
     delivered: results.reduce((n, r) => n + r.delivered, 0),
     suppressedByQuietHours: results.reduce((n, r) => n + r.suppressed, 0),
+    // Without these a suppressed run is indistinguishable from a broken one.
+    clocks: results.map((r) => r.clock).filter(Boolean),
+    server: {
+      time: new Date().toLocaleTimeString("en-GB", { hour12: false }),
+      zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
     ms: Date.now() - started,
   });
 }

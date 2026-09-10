@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  devices, notificationPreferences, notifications, userSettings,
+  devices, notificationPreferences, notifications, users, userSettings,
   type NotificationCategory, type NotificationKind, type NotificationPriority,
 } from "@/db/schema";
 import { PRIORITY_RANK } from "@/lib/domain/notifications";
@@ -82,9 +82,49 @@ export async function scheduleNotification(userId: string, spec: NotificationSpe
   return created;
 }
 
-/** "22:00" and "07:00" wrap around midnight, which the naive comparison misses. */
-export function inQuietHours(now: Date, start: string, end: string) {
-  const minutes = now.getHours() * 60 + now.getMinutes();
+/**
+ * Wall-clock minutes past midnight in a given zone.
+ *
+ * `Date.getHours()` reports the *server's* local time. That is the user's own
+ * clock when the app runs on their laptop and UTC once it is hosted, which
+ * silently shifts quiet hours by the offset between them — the failure mode is
+ * silence during the evening and alerts at 2am, with nothing in any log.
+ */
+function zonedMinutes(instant: Date, timezone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(instant);
+    const hour = Number(parts.find((p) => p.type === "hour")?.value);
+    const minute = Number(parts.find((p) => p.type === "minute")?.value);
+    if (Number.isFinite(hour) && Number.isFinite(minute)) return hour * 60 + minute;
+  } catch {
+    // An unrecognised zone string must not silence every notification, so fall
+    // through to the server clock rather than throwing.
+  }
+  return instant.getHours() * 60 + instant.getMinutes();
+}
+
+/** The same instant as the user would read it off a clock on their wall. */
+function formatZonedTime(instant: Date, timezone: string) {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(instant);
+  } catch {
+    return "unknown";
+  }
+}
+
+/** "22:00" to "07:00" wraps around midnight, which the naive comparison misses. */
+export function inQuietHours(now: Date, start: string, end: string, timezone = "UTC") {
+  const minutes = zonedMinutes(now, timezone);
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
   const startMinutes = sh * 60 + sm;
@@ -110,11 +150,23 @@ export async function deliverDueNotifications(userId: string) {
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1);
-  if (!settings) return { delivered: 0, suppressed: 0 };
+  if (!settings) return { delivered: 0, suppressed: 0, clock: null };
+
+  // Quiet hours are a statement about the user's evening, not the server's.
+  const [owner] = await db
+    .select({ timezone: users.timezone })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const timezone = owner?.timezone ?? "UTC";
 
   const quiet =
     settings.quietHoursEnabled &&
-    inQuietHours(now, settings.quietHoursStart, settings.quietHoursEnd);
+    inQuietHours(now, settings.quietHoursStart, settings.quietHoursEnd, timezone);
+
+  // Reported back to the caller: "3 suppressed" is unreadable without knowing
+  // which clock made that call, and a wrong timezone is invisible otherwise.
+  const clock = { timezone, localTime: formatZonedTime(now, timezone), quiet };
 
   const due = await db
     .select()
@@ -130,7 +182,7 @@ export async function deliverDueNotifications(userId: string) {
       ),
     );
 
-  if (due.length === 0) return { delivered: 0, suppressed: 0 };
+  if (due.length === 0) return { delivered: 0, suppressed: 0, clock };
 
   const [prefs, deviceRows] = await Promise.all([
     db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)),
@@ -194,5 +246,5 @@ export async function deliverDueNotifications(userId: string) {
     delivered++;
   }
 
-  return { delivered, suppressed };
+  return { delivered, suppressed, clock };
 }

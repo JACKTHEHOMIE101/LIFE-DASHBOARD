@@ -111,6 +111,14 @@ in `DEPLOY.md`.
 
 ## Things that will bite you
 
+- **The server's clock is not the user's clock.** Hosted, the runtime is UTC,
+  so `getHours()` shifts quiet hours by the offset and `getDate()` rolls the
+  day over at 19:00 Central — an evening habit lands on tomorrow. `register()`
+  in `src/instrumentation.ts` sets `process.env.TZ` from `APP_TIMEZONE`
+  (Vercel reserves `TZ` itself), which is sound only because this is
+  single-user. `inQuietHours` takes an explicit zone regardless, and is the
+  pattern to follow if the domain layer ever needs to serve two clocks.
+
 - **Grid overflow on mobile.** Grid items default to `min-width: auto`. Every
   responsive grid needs an explicit `grid-cols-[minmax(0,1fr)]` base track or
   it will force the layout wider than a phone viewport.

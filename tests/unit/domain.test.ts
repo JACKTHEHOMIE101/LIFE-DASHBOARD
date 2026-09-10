@@ -329,19 +329,36 @@ describe("free slots", () => {
 });
 
 describe("quiet hours", () => {
+  // Instants are written in UTC and read in a named zone, so these assertions
+  // mean the same thing on a laptop in Missouri and on a build server in UTC.
+  const at = (utc: string) => new Date(utc);
+  const CHICAGO = "America/Chicago";
+
   it("handles a window that wraps past midnight", () => {
-    expect(inQuietHours(new Date(2026, 8, 9, 23, 30), "22:00", "07:00")).toBe(true);
-    expect(inQuietHours(new Date(2026, 8, 9, 2, 0), "22:00", "07:00")).toBe(true);
-    expect(inQuietHours(new Date(2026, 8, 9, 12, 0), "22:00", "07:00")).toBe(false);
+    expect(inQuietHours(at("2026-09-10T04:30:00Z"), "22:00", "07:00", CHICAGO)).toBe(true);
+    expect(inQuietHours(at("2026-09-10T07:00:00Z"), "22:00", "07:00", CHICAGO)).toBe(true);
+    expect(inQuietHours(at("2026-09-09T17:00:00Z"), "22:00", "07:00", CHICAGO)).toBe(false);
   });
 
   it("handles a window inside a single day", () => {
-    expect(inQuietHours(new Date(2026, 8, 9, 14, 0), "13:00", "17:00")).toBe(true);
-    expect(inQuietHours(new Date(2026, 8, 9, 18, 0), "13:00", "17:00")).toBe(false);
+    expect(inQuietHours(at("2026-09-09T19:00:00Z"), "13:00", "17:00", CHICAGO)).toBe(true);
+    expect(inQuietHours(at("2026-09-09T23:00:00Z"), "13:00", "17:00", CHICAGO)).toBe(false);
   });
 
   it("excludes the exact end minute", () => {
-    expect(inQuietHours(new Date(2026, 8, 9, 7, 0), "22:00", "07:00")).toBe(false);
+    expect(inQuietHours(at("2026-09-09T12:00:00Z"), "22:00", "07:00", CHICAGO)).toBe(false);
+  });
+
+  it("reads the clock in the user's zone, not the server's", () => {
+    // 22:30 UTC is 17:30 in Chicago — the evening, not the middle of the night.
+    // Judging it on the server clock is what silenced a hosted deployment.
+    const evening = at("2026-09-10T22:30:00Z");
+    expect(inQuietHours(evening, "22:00", "07:00", "UTC")).toBe(true);
+    expect(inQuietHours(evening, "22:00", "07:00", CHICAGO)).toBe(false);
+  });
+
+  it("falls back to the server clock rather than throwing on a bad zone", () => {
+    expect(() => inQuietHours(new Date(), "22:00", "07:00", "Not/AZone")).not.toThrow();
   });
 });
 

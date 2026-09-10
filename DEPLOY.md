@@ -56,8 +56,15 @@ vercel env add NEXT_PUBLIC_VAPID_PUBLIC_KEY production
 vercel env add VAPID_PRIVATE_KEY production
 vercel env add VAPID_SUBJECT production
 vercel env add CRON_SECRET production
+vercel env add APP_TIMEZONE production        # e.g. America/Chicago
 vercel env add ANTHROPIC_API_KEY production   # optional
 ```
+
+`APP_TIMEZONE` is not optional in practice. A hosted server runs in UTC, and
+without it quiet hours are judged on the wrong clock — the symptom is silence
+all evening and alerts before dawn. Vercel reserves the name `TZ`, which is why
+this uses its own. Check it with the `clocks` and `server` fields the cron
+endpoint returns; they should read the time on your own wall.
 
 Copy the values from your local `.env`. Keep `AUTH_SECRET` and the VAPID keys
 the same as local if you want existing sessions and subscriptions to survive;
