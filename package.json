@@ -17,7 +17,9 @@
     "generate:vapid": "node scripts/generate-vapid.mjs",
     "setup": "node scripts/setup.mjs",
     "db:set-credentials": "tsx --env-file-if-exists=.env src/db/set-credentials.mts",
-    "db:transfer": "tsx --env-file-if-exists=.env src/db/transfer.mts"
+    "db:transfer": "tsx --env-file-if-exists=.env src/db/transfer.mts",
+    "db:migrate:hosted": "tsx --env-file-if-exists=.env src/db/migrate-hosted.mts",
+    "env:vercel": "node scripts/env-vercel.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
