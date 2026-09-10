@@ -48,17 +48,18 @@ export async function GET(request: Request) {
     created: number;
     delivered: number;
     suppressed: number;
+    dropped: number;
     clock: Clock;
   }[] = [];
 
   for (const user of rows) {
     try {
       const { created } = await generateNotifications(user.id, user.weekStartsOn ?? 1);
-      const { delivered, suppressed, clock } = await deliverDueNotifications(user.id);
-      results.push({ userId: user.id, created, delivered, suppressed, clock });
+      const { delivered, suppressed, dropped, clock } = await deliverDueNotifications(user.id);
+      results.push({ userId: user.id, created, delivered, suppressed, dropped, clock });
     } catch (error) {
       // One user failing must not stop the rest, and the run must still report.
-      results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0, clock: null });
+      results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0, dropped: 0, clock: null });
       console.error(`notification run failed for ${user.id}`, error);
     }
   }
@@ -69,6 +70,8 @@ export async function GET(request: Request) {
     created: results.reduce((n, r) => n + r.created, 0),
     delivered: results.reduce((n, r) => n + r.delivered, 0),
     suppressedByQuietHours: results.reduce((n, r) => n + r.suppressed, 0),
+    // Reminders whose task or event no longer exists, dismissed rather than sent.
+    droppedAsOrphaned: results.reduce((n, r) => n + r.dropped, 0),
     // Without these a suppressed run is indistinguishable from a broken one.
     clocks: results.map((r) => r.clock).filter(Boolean),
     server: {

@@ -14,6 +14,7 @@ import {
   metrics,
   milestones,
   notes,
+  notifications,
   people,
   projects,
   tasks,
@@ -688,6 +689,32 @@ export async function clearDemoData(database: Database, userId: string) {
 
   await database.delete(exerciseSets).where(inArray(exerciseSets.exerciseId, demoExerciseIds));
   await database.delete(exercises).where(inArray(exercises.workoutId, demoWorkoutIds));
+
+  /*
+   * Notifications point at their source by id but carry no demo flag of their
+   * own, so they have to be collected before the rows they refer to are gone.
+   * Delivery drops orphans as a safety net, but leaving them here would still
+   * fill the notification centre with reminders about a life that is not the
+   * user's.
+   */
+  const demoSourceIds = (
+    await Promise.all(
+      [tasks, events].map((table) =>
+        database
+          .select({ id: table.id })
+          .from(table)
+          .where(and(eq(table.userId, userId), eq(table.isDemo, true))),
+      ),
+    )
+  )
+    .flat()
+    .map((row) => row.id);
+
+  if (demoSourceIds.length > 0) {
+    await database
+      .delete(notifications)
+      .where(and(eq(notifications.userId, userId), inArray(notifications.sourceId, demoSourceIds)));
+  }
 
   const flagged = [
     workouts, metrics, transactions, financialAccounts, interactions, people,

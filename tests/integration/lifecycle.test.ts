@@ -330,6 +330,53 @@ describe("notification engine", () => {
     expect(row.title).toBe("Dismissed");
     expect(row.dismissedAt).not.toBeNull();
   });
+
+  it("does not deliver a reminder whose task no longer exists", async () => {
+    const { scheduleNotification, deliverDueNotifications } = await import(
+      "@/lib/notifications/engine"
+    );
+
+    const [task] = await db
+      .insert(schema.tasks)
+      .values({ userId, title: "A task that will be deleted" })
+      .returning();
+
+    const ghost = await scheduleNotification(userId, {
+      category: "tasks",
+      type: "task.due",
+      title: "About a deleted task",
+      dedupeKey: "task.due:ghost:60",
+      sourceType: "task",
+      sourceId: task.id,
+    });
+
+    const kept = await scheduleNotification(userId, {
+      category: "tasks",
+      type: "task.due",
+      title: "Not tied to any source",
+      dedupeKey: "task.due:sourceless:60",
+    });
+
+    await db.delete(schema.tasks).where(drizzle.eq(schema.tasks.id, task.id));
+
+    const result = await deliverDueNotifications(userId);
+    expect(result.dropped).toBe(1);
+
+    const [ghostRow] = await db
+      .select()
+      .from(schema.notifications)
+      .where(drizzle.eq(schema.notifications.id, ghost.id));
+    expect(ghostRow.dismissedAt).not.toBeNull();
+    expect(ghostRow.deliveredAt).toBeNull();
+
+    // A notification with no source at all must be unaffected by the check.
+    const [keptRow] = await db
+      .select()
+      .from(schema.notifications)
+      .where(drizzle.eq(schema.notifications.id, kept.id));
+    expect(keptRow.dismissedAt).toBeNull();
+    expect(keptRow.deliveredAt).not.toBeNull();
+  });
 });
 
 describe("authentication", () => {

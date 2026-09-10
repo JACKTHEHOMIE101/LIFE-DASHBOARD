@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  devices, notificationPreferences, notifications, users, userSettings,
+  devices, events, notificationPreferences, notifications, tasks, users, userSettings,
   type NotificationCategory, type NotificationKind, type NotificationPriority,
 } from "@/db/schema";
 import { PRIORITY_RANK } from "@/lib/domain/notifications";
@@ -136,6 +136,44 @@ export function inQuietHours(now: Date, start: string, end: string, timezone = "
 }
 
 /**
+ * Source types whose existence is checked before delivery.
+ *
+ * Deliberately a closed list: a notification carrying a source type not named
+ * here is delivered rather than dropped, so adding a generator can never
+ * silently start discarding its own output.
+ */
+const CHECKED_SOURCES = new Set(["task", "event"]);
+
+/** The subset of the given source ids whose rows still exist and are not deleted. */
+async function liveSourceIds(
+  userId: string,
+  rows: { sourceType: string | null; sourceId: string | null }[],
+) {
+  const wanted = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.sourceType || !row.sourceId || !CHECKED_SOURCES.has(row.sourceType)) continue;
+    wanted.set(row.sourceType, [...(wanted.get(row.sourceType) ?? []), row.sourceId]);
+  }
+
+  const live = new Set<string>();
+  const lookup = async (table: typeof tasks | typeof events, ids: string[]) => {
+    if (ids.length === 0) return;
+    const found = await db
+      .select({ id: table.id })
+      .from(table)
+      .where(and(eq(table.userId, userId), inArray(table.id, ids), isNull(table.deletedAt)));
+    for (const row of found) live.add(row.id);
+  };
+
+  await Promise.all([
+    lookup(tasks, wanted.get("task") ?? []),
+    lookup(events, wanted.get("event") ?? []),
+  ]);
+
+  return live;
+}
+
+/**
  * Delivers everything due, honouring per-category channel preferences,
  * priority thresholds and quiet hours.
  *
@@ -150,7 +188,7 @@ export async function deliverDueNotifications(userId: string) {
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1);
-  if (!settings) return { delivered: 0, suppressed: 0, clock: null };
+  if (!settings) return { delivered: 0, suppressed: 0, dropped: 0, clock: null };
 
   // Quiet hours are a statement about the user's evening, not the server's.
   const [owner] = await db
@@ -182,7 +220,33 @@ export async function deliverDueNotifications(userId: string) {
       ),
     );
 
-  if (due.length === 0) return { delivered: 0, suppressed: 0, clock };
+  if (due.length === 0) return { delivered: 0, suppressed: 0, dropped: 0, clock };
+
+  /*
+   * A reminder for something that no longer exists is worse than no reminder:
+   * it spends attention and there is nothing to be done with it. Checking at
+   * delivery rather than on delete covers every path a row can leave by — the
+   * demo clear, a soft delete, a cascade, an edit made straight to the
+   * database — with one rule instead of one per caller.
+   */
+  const live = await liveSourceIds(userId, due);
+  const isOrphan = (n: { sourceType: string | null; sourceId: string | null }) =>
+    Boolean(n.sourceType && n.sourceId && CHECKED_SOURCES.has(n.sourceType) && !live.has(n.sourceId));
+
+  const orphaned = due.filter(isOrphan);
+  if (orphaned.length > 0) {
+    // Dismissed rather than deleted: the generators will not resurrect a
+    // dismissed row, so this also stops it coming back on the next run.
+    await db
+      .update(notifications)
+      .set({ dismissedAt: now })
+      .where(inArray(notifications.id, orphaned.map((n) => n.id)));
+  }
+
+  const relevant = due.filter((n) => !isOrphan(n));
+  if (relevant.length === 0) {
+    return { delivered: 0, suppressed: 0, dropped: orphaned.length, clock };
+  }
 
   const [prefs, deviceRows] = await Promise.all([
     db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)),
@@ -195,7 +259,7 @@ export async function deliverDueNotifications(userId: string) {
   let delivered = 0;
   let suppressed = 0;
 
-  for (const notification of due) {
+  for (const notification of relevant) {
     const pushPref = prefs.find(
       (p) => p.category === notification.category && p.channel === "push",
     );
@@ -246,5 +310,5 @@ export async function deliverDueNotifications(userId: string) {
     delivered++;
   }
 
-  return { delivered, suppressed, clock };
+  return { delivered, suppressed, dropped: orphaned.length, clock };
 }
