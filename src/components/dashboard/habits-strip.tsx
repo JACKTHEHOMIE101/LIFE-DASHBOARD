@@ -40,7 +40,7 @@ function HabitChip({ habit }: { habit: HabitSummary }) {
         {done ? <Check className="size-2.5" strokeWidth={3.5} /> : null}
       </span>
       <span className="truncate">{habit.name}</span>
-      {habit.streak > 1 ? (
+      {habit.showsStreak && habit.streak > 1 ? (
         <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[11px] text-ink-subtle">
           <Flame className="size-3" />
           {habit.streak}

@@ -44,6 +44,8 @@ export default async function AnalyticsPage({
   const prior14 = completion.slice(0, 14).reduce((s, d) => s + d.value, 0);
   const goalsWithProgress = goals.filter((g) => g.progress !== null);
   const currentMonth = cashflow.at(-1);
+  // Habits without enough history are excluded rather than dragging the average down.
+  const scoredHabits = habits.filter((h) => h.consistency !== null);
 
   return (
     <div className="animate-in">
@@ -106,11 +108,13 @@ export default async function AnalyticsPage({
           <StatTile
             label="Habit consistency"
             value={
-              habits.length
-                ? `${Math.round(mean(habits.map((h) => h.consistency)) * 100)}%`
-                : "No habits"
+              scoredHabits.length
+                ? `${Math.round(mean(scoredHabits.map((h) => h.consistency as number)) * 100)}%`
+                : habits.length
+                  ? "Too new"
+                  : "No habits"
             }
-            sub={habits.length ? "30-day average" : undefined}
+            sub={scoredHabits.length ? "Average across habits" : undefined}
           />
         </Card>
       </div>

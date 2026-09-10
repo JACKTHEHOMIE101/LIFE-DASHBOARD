@@ -438,10 +438,17 @@ export async function runTool(
       if (!habits.length) return { content: "No habits are being tracked." };
       return {
         content: habits
-          .map(
-            (h) =>
-              `- ${h.name} (${h.frequency}): ${Math.round(h.consistency * 100)}% consistency over 30 days, current streak ${h.streak}, ${h.doneToday ? "done today" : "not done today"}`,
-          )
+          .map((h) => {
+            // Says "too new to judge" rather than reporting a misleading 0%,
+            // so the model never treats a fresh habit as a failing one.
+            const consistency =
+              h.consistency === null
+                ? "too new to judge"
+                : `${Math.round(h.consistency * 100)}% consistency (${h.completions30} of ${h.expectedIn30} expected)`;
+            return `- ${h.name} (${h.frequency}, target ${h.targetPerPeriod} per ${h.frequency === "daily" ? "day" : "week"}): ${consistency}${
+              h.showsStreak ? `, current streak ${h.streak}` : ""
+            }, ${h.doneToday ? "done today" : "not done today"}`;
+          })
           .join("\n"),
         citation: { label: "Habits", source: "habits", detail: `${habits.length} tracked` },
       };

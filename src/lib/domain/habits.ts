@@ -3,7 +3,24 @@ import "server-only";
 import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { habitEntries, habits, lifeAreas, type Habit } from "@/db/schema";
-import { addDays, isoDate, startOfDay } from "@/lib/utils";
+import { addDays, daysBetween, isoDate, startOfDay } from "@/lib/utils";
+
+/**
+ * Completions the window should hold if the habit is kept at its target rate.
+ *
+ * Respects `targetPerPeriod`, so "five times a week" is measured against
+ * roughly 21 sessions rather than four, and takes the number of days the habit
+ * has actually existed — a habit started yesterday is not behind on a month.
+ */
+export function expectedCompletions(
+  frequency: "daily" | "weekly",
+  targetPerPeriod: number,
+  days: number,
+) {
+  const perPeriod = Math.max(1, targetPerPeriod);
+  const rate = frequency === "daily" ? Math.min(perPeriod, 1) : perPeriod / 7;
+  return rate * Math.max(0, days);
+}
 
 export type HabitSummary = Habit & {
   areaName: string | null;
@@ -12,9 +29,12 @@ export type HabitSummary = Habit & {
   last30: { date: string; done: boolean }[];
   doneToday: boolean;
   streak: number;
-  /** Share of the last 30 periods that hit target, 0 to 1. */
-  consistency: number;
+  /** Share of expected completions made, or null while too new to judge. */
+  consistency: number | null;
   completions30: number;
+  expectedIn30: number;
+  /** False when a day streak would be misleading for this frequency. */
+  showsStreak: boolean;
 };
 
 /**
@@ -76,8 +96,10 @@ export async function listHabits(userId: string): Promise<HabitSummary[]> {
       return { date, done: done.has(date) };
     });
 
-    // Weekly habits have roughly four opportunities in 30 days, not thirty.
-    const opportunities = habit.frequency === "weekly" ? 4 : 30;
+    // Days the habit has actually been alive for, excluding today — today is
+    // not over, and a habit is not behind because the evening has not happened.
+    const daysActive = Math.min(30, Math.max(0, daysBetween(habit.createdAt, new Date())));
+    const opportunities = expectedCompletions(habit.frequency, habit.targetPerPeriod, daysActive);
 
     return {
       ...habit,
@@ -85,14 +107,27 @@ export async function listHabits(userId: string): Promise<HabitSummary[]> {
       areaColor,
       last30,
       doneToday: done.has(today),
+      // A day streak only means something for a daily habit. Something done
+      // five days a week would "break" every weekend, which is both wrong and
+      // discouraging, so those report completions instead.
       streak: habit.frequency === "daily" ? computeStreak(done) : done.size,
-      consistency: Math.min(1, done.size / opportunities),
+      showsStreak: habit.frequency === "daily",
+      // Null rather than 0% when the habit is too new to have a record worth
+      // judging. Reporting a day-old habit as 0% consistent is not a fact
+      // about the habit, it is a fact about the calendar.
+      consistency: opportunities >= 1 ? Math.min(1, done.size / opportunities) : null,
       completions30: done.size,
+      expectedIn30: Math.round(opportunities),
     };
   });
 }
 
+/**
+ * Habits worth showing on the dashboard for today. Daily ones always, plus any
+ * weekly habit done most days — five-times-a-week is a today decision, whereas
+ * a once-a-week review is not and would just be noise.
+ */
 export async function getTodaysHabits(userId: string) {
   const all = await listHabits(userId);
-  return all.filter((h) => h.frequency === "daily");
+  return all.filter((h) => h.frequency === "daily" || h.targetPerPeriod >= 3);
 }

@@ -57,7 +57,7 @@ function HabitCard({ habit }: { habit: HabitSummary }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-medium text-ink">{habit.name}</h3>
-            {habit.streak > 1 ? (
+            {habit.showsStreak && habit.streak > 1 ? (
               <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-ink-subtle">
                 <Flame className="size-3" />
                 {habit.streak}
@@ -114,18 +114,39 @@ function HabitCard({ habit }: { habit: HabitSummary }) {
       </div>
 
       <div className="mt-3">
-        <div className="mb-1.5 flex items-baseline justify-between text-[12px]">
-          <span className="text-ink-muted">30-day consistency</span>
-          <span className="font-medium text-ink tabular" data-numeric>
-            {Math.round(habit.consistency * 100)}%
-          </span>
-        </div>
-        <Meter
-          value={habit.consistency}
-          tone={habit.consistency >= 0.7 ? "positive" : habit.consistency >= 0.4 ? "accent" : "caution"}
-          size="sm"
-          label={`${habit.name} consistency`}
-        />
+        {habit.consistency === null ? (
+          <p className="text-[12px] text-ink-subtle">
+            Too new to judge. Consistency appears once there is enough of a record to mean
+            something.
+          </p>
+        ) : (
+          <>
+            <div className="mb-1.5 flex items-baseline justify-between text-[12px]">
+              <span className="text-ink-muted">
+                Consistency
+                <span className="text-ink-subtle">
+                  {" "}
+                  · {habit.completions30} of {habit.expectedIn30} expected
+                </span>
+              </span>
+              <span className="font-medium text-ink tabular" data-numeric>
+                {Math.round(habit.consistency * 100)}%
+              </span>
+            </div>
+            <Meter
+              value={habit.consistency}
+              tone={
+                habit.consistency >= 0.7
+                  ? "positive"
+                  : habit.consistency >= 0.4
+                    ? "accent"
+                    : "caution"
+              }
+              size="sm"
+              label={`${habit.name} consistency`}
+            />
+          </>
+        )}
       </div>
 
       {habit.frequency === "daily" ? (

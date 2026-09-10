@@ -3,7 +3,7 @@ import {
   computeGoalProgress, computeThresholdState, computeTimeElapsed,
 } from "@/lib/domain/goals";
 import { computeProgress } from "@/lib/domain/projects";
-import { computeStreak } from "@/lib/domain/habits";
+import { computeStreak, expectedCompletions } from "@/lib/domain/habits";
 import { daysUntilAnniversary } from "@/lib/domain/relationships";
 import { analyseEvents, findFreeSlots } from "@/lib/domain/calendar";
 import { inQuietHours } from "@/lib/notifications/engine";
@@ -150,6 +150,28 @@ describe("habit streaks", () => {
 
   it("returns zero for a habit never completed", () => {
     expect(computeStreak(new Set())).toBe(0);
+  });
+});
+
+describe("expected habit completions", () => {
+  it("respects a target of several times a week", () => {
+    // Five a week over 28 days is 20 sessions, not four.
+    expect(expectedCompletions("weekly", 5, 28)).toBeCloseTo(20, 5);
+  });
+
+  it("treats a once-a-week habit as roughly four in a month", () => {
+    expect(expectedCompletions("weekly", 1, 28)).toBeCloseTo(4, 5);
+  });
+
+  it("caps a daily habit at one a day however the target is set", () => {
+    expect(expectedCompletions("daily", 1, 30)).toBe(30);
+    expect(expectedCompletions("daily", 3, 30)).toBe(30);
+  });
+
+  it("scales to how long the habit has existed", () => {
+    // A habit two days old is not behind on a month of sessions.
+    expect(expectedCompletions("weekly", 5, 2)).toBeCloseTo(10 / 7, 5);
+    expect(expectedCompletions("daily", 1, 0)).toBe(0);
   });
 });
 

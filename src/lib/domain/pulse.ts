@@ -135,9 +135,12 @@ async function healthSignals(userId: string): Promise<[PulseSignal[], string[]]>
     );
   }
 
-  const healthHabits = habits.filter((h) => h.areaName === "Health");
+  // Habits too new to judge are left out rather than counted as zero.
+  const healthHabits = habits.filter(
+    (h) => h.areaName === "Health" && h.consistency !== null,
+  );
   if (healthHabits.length) {
-    const consistency = mean(healthHabits.map((h) => h.consistency));
+    const consistency = mean(healthHabits.map((h) => h.consistency as number));
     signals.push(
       signal(
         "Health habits",
@@ -330,10 +333,10 @@ async function growthSignals(userId: string, areaId: string): Promise<[PulseSign
   ]);
 
   const signals: PulseSignal[] = [];
-  const areaHabits = habits.filter((h) => h.lifeAreaId === areaId);
+  const areaHabits = habits.filter((h) => h.lifeAreaId === areaId && h.consistency !== null);
 
   if (areaHabits.length) {
-    const consistency = mean(areaHabits.map((h) => h.consistency));
+    const consistency = mean(areaHabits.map((h) => h.consistency as number));
     signals.push(
       signal(
         "Practice",
