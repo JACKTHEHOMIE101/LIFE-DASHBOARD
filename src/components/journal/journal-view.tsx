@@ -95,7 +95,7 @@ export function JournalView({
   }, [state]);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <Card>
         <CardHeader
           title={isoDate(new Date()) === date ? "Today" : formatLongDate(new Date(`${date}T12:00:00`))}

@@ -235,7 +235,7 @@ export function NotificationPreferencesView({
             Enable quiet hours
           </label>
 
-          <div className="grid gap-3.5 sm:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 sm:grid-cols-2">
             <div>
               <Label htmlFor="q-start">From</Label>
               <Input id="q-start" name="quietHoursStart" type="time" defaultValue={settings.quietHoursStart} />

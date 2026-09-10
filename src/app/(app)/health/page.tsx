@@ -39,7 +39,7 @@ export default async function HealthPage() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {connected.map((metric) => (
               <Card key={metric.kind} className="p-4">
                 <StatTile

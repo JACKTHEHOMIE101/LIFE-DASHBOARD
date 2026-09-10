@@ -78,7 +78,7 @@ export function SettingsView({
       <Card>
         <CardHeader title="Profile" />
         <form action={profileAction} className="space-y-3.5 border-t border-border px-5 py-4">
-          <div className="grid gap-3.5 sm:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 sm:grid-cols-2">
             <div>
               <Label htmlFor="s-name">Name</Label>
               <Input id="s-name" name="name" defaultValue={name} required />
@@ -132,7 +132,7 @@ export function SettingsView({
           description="Hours per week you mean to spend. Analytics compares actuals against these."
         />
         <form action={budgetAction} className="space-y-3.5 border-t border-border px-5 py-4">
-          <div className="grid gap-3.5 sm:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 sm:grid-cols-3">
             {BUDGET_FIELDS.map((field) => (
               <div key={field.key}>
                 <Label htmlFor={`b-${field.key}`}>{field.label}</Label>

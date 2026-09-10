@@ -189,7 +189,7 @@ export function LifeAreasView({ areas }: { areas: AreaRow[] }) {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
         {active.map((area, i) => (
           <AreaCard
             key={area.id}
