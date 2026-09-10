@@ -1,0 +1,1 @@
+ALTER TABLE `goals` ADD `kind` text DEFAULT 'target' NOT NULL;

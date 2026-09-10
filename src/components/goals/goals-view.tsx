@@ -3,9 +3,9 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { AlertTriangle, Loader2, Pencil, Plus, Target } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Pencil, Plus, Target } from "lucide-react";
 import type { GoalSummary } from "@/lib/domain/goals";
-import { GOAL_STATUS_LABEL } from "@/lib/domain/labels";
+import { GOAL_KIND_HINT, GOAL_KIND_LABEL, GOAL_STATUS_LABEL } from "@/lib/domain/labels";
 import type { PaletteArea } from "@/lib/domain/search-types";
 import { createGoal, updateGoal, type GoalState } from "@/lib/actions/goals";
 import { Meter } from "@/components/ui/charts";
@@ -115,6 +115,21 @@ function GoalForm({
             <legend className="px-1 text-[12px] text-ink-muted">
               Measurement (optional, but it is what makes progress real)
             </legend>
+
+            <div className="mb-3">
+              <Label htmlFor="g-kind">Shape of the goal</Label>
+              <Select id="g-kind" name="kind" defaultValue={goal?.kind ?? "target"}>
+                {(["target", "floor", "ceiling"] as const).map((k) => (
+                  <option key={k} value={k}>
+                    {GOAL_KIND_LABEL[k]}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-[11px] text-ink-subtle">
+                {GOAL_KIND_HINT[goal?.kind ?? "target"]}
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="g-metric">Metric</Label>
@@ -164,11 +179,11 @@ function GoalForm({
 
 function GoalCard({ goal, onEdit }: { goal: GoalSummary; onEdit: () => void }) {
   const progress = goal.progress;
+  // "USD" is already carried by the currency formatting, so it is not repeated.
+  const unitSuffix = goal.metricUnit && goal.metricUnit !== "USD" ? ` ${goal.metricUnit}` : "";
   const metric =
     goal.currentValue !== null && goal.targetValue !== null
-      ? `${goal.currentValue.toLocaleString()} of ${goal.targetValue.toLocaleString()}${
-          goal.metricUnit && goal.metricUnit !== "USD" ? ` ${goal.metricUnit}` : ""
-        }`
+      ? `${goal.currentValue.toLocaleString()} of ${goal.targetValue.toLocaleString()}${unitSuffix}`
       : null;
 
   return (
@@ -177,7 +192,12 @@ function GoalCard({ goal, onEdit }: { goal: GoalSummary; onEdit: () => void }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-medium text-ink">{goal.title}</h3>
-            {goal.isNeglected ? (
+            {goal.threshold && !goal.threshold.meeting ? (
+              <Badge tone="caution">
+                <AlertTriangle className="size-2.5" />
+                Below your line
+              </Badge>
+            ) : goal.isNeglected ? (
               <Badge tone="caution">
                 <AlertTriangle className="size-2.5" />
                 No recent progress
@@ -223,14 +243,53 @@ function GoalCard({ goal, onEdit }: { goal: GoalSummary; onEdit: () => void }) {
             </p>
           ) : null}
         </div>
+      ) : goal.threshold ? (
+        // A line to defend. No bar, because there is no percentage to be at:
+        // the only question is which side of the line today's reading sits on,
+        // and that stays open until the goal ends.
+        <div
+          className={cn(
+            "mt-3 rounded-lg border px-3 py-2.5",
+            goal.threshold.meeting
+              ? "border-positive/25 bg-positive-soft/40"
+              : "border-caution/30 bg-caution-soft/40",
+          )}
+        >
+          <p className="flex items-center gap-1.5 text-[13px]">
+            {goal.threshold.meeting ? (
+              <Check className="size-3.5 shrink-0 text-positive" />
+            ) : (
+              <AlertTriangle className="size-3.5 shrink-0 text-caution" />
+            )}
+            <span className="font-medium text-ink">
+              {goal.currentValue?.toLocaleString()}
+              {unitSuffix}
+            </span>
+            <span className="text-ink-muted">
+              {goal.threshold.meeting
+                ? `holding ${goal.threshold.side} ${goal.targetValue?.toLocaleString()}${unitSuffix}`
+                : `is ${goal.threshold.side === "above" ? "below" : "above"} your ${goal.targetValue?.toLocaleString()}${unitSuffix} line`}
+            </span>
+          </p>
+          <p className="mt-1 text-[11px] text-ink-subtle">
+            {goal.threshold.meeting
+              ? `${Math.round(goal.threshold.margin * 100) / 100}${unitSuffix} of room.`
+              : `${Math.round(goal.threshold.margin * 100) / 100}${unitSuffix} to recover.`}
+            {/* The clock is what keeps a floor goal alive. Without it a held
+                line looks finished, which is the trap this goal type exists
+                to avoid. */}
+            {goal.timeElapsed !== null
+              ? ` ${Math.round(goal.timeElapsed * 100)}% of the time has passed — it has to hold to the end.`
+              : ""}
+          </p>
+        </div>
       ) : goal.targetValue !== null ? (
         // A target exists but there is no reading yet. That is a different
         // state from having no metric at all, and saying so tells the reader
         // exactly what is missing.
         <p className="mt-3 text-[12px] text-ink-subtle">
           Aiming for {goal.targetValue.toLocaleString()}
-          {goal.metricUnit && goal.metricUnit !== "USD" ? ` ${goal.metricUnit}` : ""}. Add where you
-          are now to start tracking progress.
+          {unitSuffix}. Add where you are now to start tracking progress.
         </p>
       ) : (
         <p className="mt-3 text-[12px] text-ink-subtle">

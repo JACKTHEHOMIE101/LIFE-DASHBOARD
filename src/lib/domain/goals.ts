@@ -2,7 +2,9 @@ import "server-only";
 
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { goals, lifeAreas, projects, type Goal, type GoalStatus } from "@/db/schema";
+import {
+  goals, lifeAreas, projects, type Goal, type GoalKind, type GoalStatus,
+} from "@/db/schema";
 import { clamp, daysBetween } from "@/lib/utils";
 
 export { GOAL_STATUS_LABEL } from "./labels";
@@ -23,7 +25,12 @@ export function computeGoalProgress(goal: {
   currentValue: number | null;
   targetValue: number | null;
   manualProgress: number | null;
+  kind?: GoalKind;
 }): number | null {
+  // A floor or a ceiling has no percentage. You are holding the line or you
+  // are not, and that question stays open until the goal ends.
+  if (goal.kind === "floor" || goal.kind === "ceiling") return null;
+
   if (goal.targetValue !== null && goal.currentValue !== null) {
     const start = goal.startValue ?? 0;
     const span = goal.targetValue - start;
@@ -48,10 +55,48 @@ export function computeTimeElapsed(goal: {
   return clamp((Date.now() - goal.createdAt.getTime()) / total);
 }
 
+export type ThresholdState = {
+  /** True while the current reading is on the right side of the line. */
+  meeting: boolean;
+  /** Distance from the line, always positive. */
+  margin: number;
+  /** "above" for a floor, "below" for a ceiling. */
+  side: "above" | "below";
+};
+
+/**
+ * Where a floor or ceiling goal stands right now.
+ *
+ * Returns null for ordinary target goals, and for threshold goals that have no
+ * reading yet — there is nothing to judge until a number exists.
+ */
+export function computeThresholdState(goal: {
+  kind?: GoalKind;
+  currentValue: number | null;
+  targetValue: number | null;
+}): ThresholdState | null {
+  if (goal.kind !== "floor" && goal.kind !== "ceiling") return null;
+  if (goal.currentValue === null || goal.targetValue === null) return null;
+
+  const meeting =
+    goal.kind === "floor"
+      ? goal.currentValue >= goal.targetValue
+      : goal.currentValue <= goal.targetValue;
+
+  return {
+    meeting,
+    margin: Math.abs(goal.currentValue - goal.targetValue),
+    side: goal.kind === "floor" ? "above" : "below",
+  };
+}
+
 export type GoalSummary = Goal & {
   areaName: string | null;
   areaColor: string | null;
+  /** Null for floor and ceiling goals, which have no percentage. */
   progress: number | null;
+  /** Set only for floor and ceiling goals that have a reading. */
+  threshold: ThresholdState | null;
   timeElapsed: number | null;
   /** True when the clock has run further than the work. */
   behindSchedule: boolean;
@@ -109,7 +154,9 @@ export async function listGoals(
       areaColor,
       progress,
       timeElapsed,
-      // Only a claim when both halves are known, and only past a real margin.
+      threshold: computeThresholdState(goal),
+      // Only a climb can fall behind a schedule, and only past a real margin.
+      // A floor is either held or breached, which is reported separately.
       behindSchedule:
         progress !== null && timeElapsed !== null && timeElapsed - progress > 0.15,
       daysSinceProgress,

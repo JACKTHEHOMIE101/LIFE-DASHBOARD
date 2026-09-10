@@ -70,6 +70,20 @@ export const lifeAreas = sqliteTable("life_areas", {
 
 export type GoalStatus = "active" | "paused" | "achieved" | "abandoned";
 
+/**
+ * Not every goal is a climb.
+ *
+ *  target  — start somewhere, reach a number. Progress is a fraction.
+ *  floor   — hold at or above a line (a GPA, a savings rate).
+ *  ceiling — hold at or below a line (a resting heart rate, a monthly spend).
+ *
+ * Floors and ceilings have no meaningful "percent complete": you are either
+ * holding the line today or you are not, and that stays true until the goal
+ * ends. Showing them as 100% would tell you to stop paying attention at
+ * exactly the moment attention matters.
+ */
+export type GoalKind = "target" | "floor" | "ceiling";
+
 export const goals = sqliteTable("goals", {
   id: id(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -80,6 +94,7 @@ export const goals = sqliteTable("goals", {
   description: text("description"),
   why: text("why"),
   status: text("status").$type<GoalStatus>().notNull().default("active"),
+  kind: text("kind").$type<GoalKind>().notNull().default("target"),
   targetDate: integer("target_date", { mode: "timestamp_ms" }),
   metricName: text("metric_name"),
   metricUnit: text("metric_unit"),

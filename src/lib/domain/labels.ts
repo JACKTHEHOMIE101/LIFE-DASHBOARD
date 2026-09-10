@@ -1,4 +1,6 @@
-import type { EventCategory, GoalStatus, MetricKind, ProjectStatus, TaskPriority } from "@/db/schema";
+import type {
+  EventCategory, GoalKind, GoalStatus, MetricKind, ProjectStatus, TaskPriority,
+} from "@/db/schema";
 
 /**
  * Display labels shared by server queries and client components.
@@ -6,6 +8,19 @@ import type { EventCategory, GoalStatus, MetricKind, ProjectStatus, TaskPriority
  * Kept in its own module with no database import so a client component can use
  * a label without pulling `server-only` into the browser bundle.
  */
+
+export const GOAL_KIND_LABEL: Record<GoalKind, string> = {
+  target: "Reach a target",
+  floor: "Stay at or above",
+  ceiling: "Stay at or below",
+};
+
+/** Shown under the selector so the difference is obvious when choosing. */
+export const GOAL_KIND_HINT: Record<GoalKind, string> = {
+  target: "A climb. Progress is measured from where you started.",
+  floor: "A line to defend, like a GPA. No progress bar — you are holding it or you are not.",
+  ceiling: "A limit to stay under, like a resting heart rate or a monthly spend.",
+};
 
 export const GOAL_STATUS_LABEL: Record<GoalStatus, string> = {
   active: "Active",

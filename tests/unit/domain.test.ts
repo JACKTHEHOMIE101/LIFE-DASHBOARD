@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { computeGoalProgress, computeTimeElapsed } from "@/lib/domain/goals";
+import {
+  computeGoalProgress, computeThresholdState, computeTimeElapsed,
+} from "@/lib/domain/goals";
 import { computeProgress } from "@/lib/domain/projects";
 import { computeStreak } from "@/lib/domain/habits";
 import { daysUntilAnniversary } from "@/lib/domain/relationships";
@@ -54,6 +56,62 @@ describe("goal progress", () => {
 
   it("returns null time elapsed with no target date", () => {
     expect(computeTimeElapsed({ createdAt: new Date(), targetDate: null })).toBeNull();
+  });
+});
+
+describe("threshold goals", () => {
+  const base = { startValue: null, manualProgress: null };
+
+  it("has no percentage, because holding a line is not a climb", () => {
+    // A 4.0 against a 3.75 floor must not read as "100% done" in September.
+    expect(
+      computeGoalProgress({ ...base, kind: "floor", currentValue: 4.0, targetValue: 3.75 }),
+    ).toBeNull();
+  });
+
+  it("reports a floor as met while the reading is at or above the line", () => {
+    const state = computeThresholdState({ kind: "floor", currentValue: 4.0, targetValue: 3.75 });
+    expect(state).toMatchObject({ meeting: true, side: "above" });
+    expect(state?.margin).toBeCloseTo(0.25, 5);
+  });
+
+  it("treats exactly on the line as met, not breached", () => {
+    expect(
+      computeThresholdState({ kind: "floor", currentValue: 3.75, targetValue: 3.75 })?.meeting,
+    ).toBe(true);
+  });
+
+  it("reports a floor as breached once the reading drops under it", () => {
+    const state = computeThresholdState({ kind: "floor", currentValue: 3.6, targetValue: 3.75 });
+    expect(state?.meeting).toBe(false);
+    expect(state?.margin).toBeCloseTo(0.15, 5);
+  });
+
+  it("inverts the test for a ceiling", () => {
+    expect(
+      computeThresholdState({ kind: "ceiling", currentValue: 55, targetValue: 60 })?.meeting,
+    ).toBe(true);
+    expect(
+      computeThresholdState({ kind: "ceiling", currentValue: 65, targetValue: 60 })?.meeting,
+    ).toBe(false);
+  });
+
+  it("says nothing at all without a reading", () => {
+    expect(
+      computeThresholdState({ kind: "floor", currentValue: null, targetValue: 3.75 }),
+    ).toBeNull();
+  });
+
+  it("does not apply to ordinary target goals", () => {
+    expect(
+      computeThresholdState({ kind: "target", currentValue: 10, targetValue: 20 }),
+    ).toBeNull();
+  });
+
+  it("leaves ordinary target goals computing a percentage as before", () => {
+    expect(
+      computeGoalProgress({ ...base, kind: "target", currentValue: 16, targetValue: 12, startValue: 16 }),
+    ).toBe(0);
   });
 });
 

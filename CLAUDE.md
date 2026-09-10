@@ -7,7 +7,7 @@ This file is about how to work in the codebase without breaking its principles.
 
 ```bash
 npm run dev            # dev server
-npm test               # vitest, 54 tests
+npm test               # vitest, 62 tests
 npm run build          # production build — the real client/server boundary check
 npm run db:generate    # after any schema change
 npm run db:migrate
@@ -74,6 +74,20 @@ stay idempotent — it runs on every page view.
 **A schema change**: edit `schema.ts`, run `db:generate` then `db:migrate`.
 Prefer soft deletion. Anything importable needs the `provenance` spread;
 anything user-facing needs `ownership`.
+
+## Goal shapes
+
+A goal is one of three kinds, and they are not interchangeable:
+
+- `target` — a climb. Progress is `(current - start) / (target - start)`.
+- `floor` — a line to hold at or above (a GPA, a savings rate).
+- `ceiling` — a limit to stay under (a resting heart rate, a monthly spend).
+
+`computeGoalProgress` returns **null** for floors and ceilings on purpose.
+A held line is not "100% complete" — it has to hold until the goal ends, and a
+full progress bar tells the reader to stop watching at exactly the wrong
+moment. Use `computeThresholdState` for those, and always show the elapsed
+clock alongside it.
 
 ## Things that will bite you
 

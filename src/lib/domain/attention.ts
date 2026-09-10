@@ -146,6 +146,25 @@ export async function getAttentionSignals(userId: string, weekStartsOn = 1) {
     });
   }
 
+  // A floor that has been breached is more urgent than a climb running late:
+  // the line is already crossed rather than merely at risk.
+  for (const goal of allGoals.filter((g) => g.threshold && !g.threshold.meeting).slice(0, 2)) {
+    const unit = goal.metricUnit && goal.metricUnit !== "USD" ? ` ${goal.metricUnit}` : "";
+    signals.push({
+      key: `goals:threshold:${goal.id}`,
+      category: "goals",
+      severity: "high",
+      title: `"${goal.title}" has slipped below your line`,
+      why: `${goal.currentValue}${unit} against a ${goal.targetValue}${unit} target${
+        goal.daysRemaining !== null && goal.daysRemaining > 0
+          ? `, with ${goal.daysRemaining} days left to recover it.`
+          : "."
+      }`,
+      href: "/goals",
+      askPrompt: `"${goal.title}" has dropped below the line I set. What would it take to pull it back?`,
+    });
+  }
+
   for (const goal of allGoals.filter((g) => g.behindSchedule && !g.isNeglected).slice(0, 2)) {
     const progressPct = Math.round((goal.progress ?? 0) * 100);
     const elapsedPct = Math.round((goal.timeElapsed ?? 0) * 100);
