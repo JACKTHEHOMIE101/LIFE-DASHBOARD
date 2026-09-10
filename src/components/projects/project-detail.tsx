@@ -75,11 +75,13 @@ export function ProjectDetail({
   lifeAreas,
   projects,
   goals,
+  extraGoalIds,
 }: {
   project: DetailProject;
   lifeAreas: PaletteArea[];
   projects: PaletteProject[];
   goals: { id: string; title: string }[];
+  extraGoalIds: string[];
 }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
@@ -295,6 +297,7 @@ export function ProjectDetail({
         lifeAreas={lifeAreas}
         goals={goals}
         project={project}
+        extraGoalIds={extraGoalIds}
       />
       <TaskForm
         open={taskOpen}

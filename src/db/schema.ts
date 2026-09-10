@@ -140,6 +140,27 @@ export const projects = sqliteTable("projects", {
   uniqueIndex("projects_external_idx").on(t.provider, t.externalId),
 ]);
 
+/**
+ * Extra goals a project contributes to, beyond its primary one.
+ *
+ * `projects.goalId` stays the primary link and is what drives life-area
+ * inheritance and rollups; this table holds the others. Real work rarely
+ * serves exactly one goal — a student investment club advances both "get into
+ * banking" and "learn the market" — and forcing a choice loses information.
+ */
+export const projectGoals = sqliteTable("project_goals", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  goalId: text("goal_id").notNull().references(() => goals.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => [
+  uniqueIndex("project_goals_unique_idx").on(t.projectId, t.goalId),
+  index("project_goals_goal_idx").on(t.goalId),
+]);
+
 export const milestones = sqliteTable("milestones", {
   id: id(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -627,6 +648,7 @@ export type LifeArea = typeof lifeAreas.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Milestone = typeof milestones.$inferSelect;
+export type ProjectGoal = typeof projectGoals.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type CalendarEvent = typeof events.$inferSelect;
 export type Person = typeof people.$inferSelect;

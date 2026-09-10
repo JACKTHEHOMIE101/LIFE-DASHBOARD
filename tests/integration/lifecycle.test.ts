@@ -174,6 +174,66 @@ describe("task and project lifecycle", () => {
   });
 });
 
+describe("a project serving several goals", () => {
+  it("counts toward both its primary and its extra goals", async () => {
+    const [primary] = await db
+      .insert(schema.goals)
+      .values({ userId, title: "Primary goal" })
+      .returning();
+    const [secondary] = await db
+      .insert(schema.goals)
+      .values({ userId, title: "Secondary goal" })
+      .returning();
+
+    const [project] = await db
+      .insert(schema.projects)
+      .values({ userId, title: "Serves two", status: "active", goalId: primary.id })
+      .returning();
+
+    await db
+      .insert(schema.projectGoals)
+      .values({ userId, projectId: project.id, goalId: secondary.id });
+
+    const { listGoals } = await import("@/lib/domain/goals");
+    const { listProjects } = await import("@/lib/domain/projects");
+
+    const goalRows = await listGoals(userId, { statuses: ["active"] });
+    expect(goalRows.find((g) => g.id === primary.id)?.projectCount).toBe(1);
+    // The point of the join table: a supporting goal is not reported as having
+    // nothing working on it.
+    expect(goalRows.find((g) => g.id === secondary.id)?.projectCount).toBe(1);
+
+    const summary = (await listProjects(userId, { statuses: ["active"] })).find(
+      (p) => p.id === project.id,
+    );
+    expect(summary?.goalTitles).toEqual(["Primary goal", "Secondary goal"]);
+  });
+
+  it("does not double count when a goal is both primary and linked", async () => {
+    const [goal] = await db
+      .insert(schema.goals)
+      .values({ userId, title: "Linked twice" })
+      .returning();
+    const [project] = await db
+      .insert(schema.projects)
+      .values({ userId, title: "Double link", status: "active", goalId: goal.id })
+      .returning();
+
+    await db.insert(schema.projectGoals).values({ userId, projectId: project.id, goalId: goal.id });
+
+    const { listGoals } = await import("@/lib/domain/goals");
+    const { listProjects } = await import("@/lib/domain/projects");
+
+    const row = (await listGoals(userId, { statuses: ["active"] })).find((g) => g.id === goal.id);
+    expect(row?.projectCount).toBe(1);
+
+    const summary = (await listProjects(userId, { statuses: ["active"] })).find(
+      (p) => p.id === project.id,
+    );
+    expect(summary?.goalTitles).toEqual(["Linked twice"]);
+  });
+});
+
 describe("integration normalisation", () => {
   it("upserts by provider and external id instead of duplicating", async () => {
     const external = { provider: "demo_provider", externalId: "evt-1" };

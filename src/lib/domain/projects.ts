@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  goals, lifeAreas, milestones, projects, tasks,
+  goals, lifeAreas, milestones, projectGoals, projects, tasks,
   type Milestone, type Project, type ProjectStatus,
 } from "@/db/schema";
 import { daysBetween } from "@/lib/utils";
@@ -16,7 +16,10 @@ export const STALL_THRESHOLD_DAYS = 14;
 export type ProjectSummary = Project & {
   areaName: string | null;
   areaColor: string | null;
+  /** Title of the primary goal. */
   goalTitle: string | null;
+  /** Every goal this project contributes to, primary first. */
+  goalTitles: string[];
   taskTotal: number;
   taskDone: number;
   progress: number;
@@ -67,9 +70,9 @@ export async function listProjects(
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.project.id);
 
-  // Counts, next actions and next milestones in three queries rather than
-  // three per project.
-  const [counts, nextActions, upcomingMilestones] = await Promise.all([
+  // Counts, next actions, milestones and extra goal links in four queries
+  // rather than four per project.
+  const [counts, nextActions, upcomingMilestones, extraGoals] = await Promise.all([
     db
       .select({
         projectId: tasks.projectId,
@@ -95,6 +98,11 @@ export async function listProjects(
       .from(milestones)
       .where(and(inArray(milestones.projectId, ids), isNull(milestones.completedAt), isNull(milestones.deletedAt)))
       .orderBy(asc(milestones.dueDate)),
+    db
+      .select({ projectId: projectGoals.projectId, title: goals.title })
+      .from(projectGoals)
+      .innerJoin(goals, eq(goals.id, projectGoals.goalId))
+      .where(and(inArray(projectGoals.projectId, ids), isNull(goals.deletedAt))),
   ]);
 
   const countMap = new Map(counts.map((c) => [c.projectId, c]));
@@ -107,6 +115,11 @@ export async function listProjects(
   const milestoneMap = new Map<string, Milestone>();
   for (const m of upcomingMilestones) {
     if (!milestoneMap.has(m.projectId)) milestoneMap.set(m.projectId, m);
+  }
+
+  const extraGoalMap = new Map<string, string[]>();
+  for (const link of extraGoals) {
+    extraGoalMap.set(link.projectId, [...(extraGoalMap.get(link.projectId) ?? []), link.title]);
   }
 
   const now = new Date();
@@ -122,6 +135,11 @@ export async function listProjects(
       areaName,
       areaColor,
       goalTitle,
+      // Primary first, then the rest, with no duplicate if it is also linked.
+      goalTitles: [
+        ...(goalTitle ? [goalTitle] : []),
+        ...(extraGoalMap.get(project.id) ?? []).filter((t) => t !== goalTitle),
+      ],
       taskTotal: total,
       taskDone: done,
       progress: computeProgress(done, total),
@@ -153,7 +171,7 @@ export async function getProject(userId: string, projectId: string) {
 
   if (!row) return null;
 
-  const [projectTasks, projectMilestones] = await Promise.all([
+  const [projectTasks, projectMilestones, extraGoals] = await Promise.all([
     db
       .select()
       .from(tasks)
@@ -164,6 +182,11 @@ export async function getProject(userId: string, projectId: string) {
       .from(milestones)
       .where(and(eq(milestones.projectId, projectId), isNull(milestones.deletedAt)))
       .orderBy(asc(milestones.sortOrder), asc(milestones.dueDate)),
+    db
+      .select({ title: goals.title })
+      .from(projectGoals)
+      .innerJoin(goals, eq(goals.id, projectGoals.goalId))
+      .where(and(eq(projectGoals.projectId, projectId), isNull(goals.deletedAt))),
   ]);
 
   const done = projectTasks.filter((t) => t.status === "done").length;
@@ -176,6 +199,10 @@ export async function getProject(userId: string, projectId: string) {
     areaName: row.areaName,
     areaColor: row.areaColor,
     goalTitle: row.goalTitle,
+    goalTitles: [
+      ...(row.goalTitle ? [row.goalTitle] : []),
+      ...extraGoals.map((g) => g.title).filter((t) => t !== row.goalTitle),
+    ],
     tasks: projectTasks,
     milestones: projectMilestones,
     taskTotal: projectTasks.length,

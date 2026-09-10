@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  goals, lifeAreas, projects, type Goal, type GoalKind, type GoalStatus,
+  goals, lifeAreas, projectGoals, projects, type Goal, type GoalKind, type GoalStatus,
 } from "@/db/schema";
 import { clamp, daysBetween } from "@/lib/utils";
 
@@ -129,20 +129,31 @@ export async function listGoals(
 
   if (rows.length === 0) return [];
 
-  const linkedProjects = await db
-    .select({ goalId: projects.goalId, id: projects.id })
-    .from(projects)
-    .where(
-      and(
-        inArray(projects.goalId, rows.map((r) => r.goal.id)),
-        isNull(projects.deletedAt),
-      ),
-    );
+  const goalIds = rows.map((r) => r.goal.id);
 
-  const projectCounts = new Map<string, number>();
-  for (const p of linkedProjects) {
-    if (p.goalId) projectCounts.set(p.goalId, (projectCounts.get(p.goalId) ?? 0) + 1);
+  // A project counts toward a goal whether it is the primary link or one of
+  // the extra ones, so a goal is never reported as having nothing working on
+  // it just because it is not some project's headline goal.
+  const [primaryLinks, extraLinks] = await Promise.all([
+    db
+      .select({ goalId: projects.goalId, id: projects.id })
+      .from(projects)
+      .where(and(inArray(projects.goalId, goalIds), isNull(projects.deletedAt))),
+    db
+      .select({ goalId: projectGoals.goalId, id: projectGoals.projectId })
+      .from(projectGoals)
+      .innerJoin(projects, eq(projects.id, projectGoals.projectId))
+      .where(and(inArray(projectGoals.goalId, goalIds), isNull(projects.deletedAt))),
+  ]);
+
+  const seen = new Map<string, Set<string>>();
+  for (const link of [...primaryLinks, ...extraLinks]) {
+    if (!link.goalId) continue;
+    const set = seen.get(link.goalId) ?? new Set<string>();
+    set.add(link.id);
+    seen.set(link.goalId, set);
   }
+  const projectCounts = new Map([...seen].map(([goalId, ids]) => [goalId, ids.size]));
 
   // Parent titles resolved from the same result set, so a sub-goal can say what
   // it rolls up into without a second query per row.

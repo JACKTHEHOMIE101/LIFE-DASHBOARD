@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { milestones, projects } from "@/db/schema";
+import { goals, milestones, projectGoals, projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 
 export type ProjectState = { ok?: boolean; error?: string; id?: string };
@@ -36,6 +36,40 @@ function parse(formData: FormData) {
   });
 }
 
+/**
+ * Replaces the set of extra goals a project serves.
+ *
+ * The primary goal lives on `projects.goalId` and is excluded here, so the two
+ * can never disagree about which goal is the headline one.
+ */
+async function setExtraGoals(
+  userId: string,
+  projectId: string,
+  goalIds: string[],
+  primaryGoalId: string | null,
+) {
+  const wanted = [...new Set(goalIds.filter((g) => g && g !== primaryGoalId))];
+
+  await db
+    .delete(projectGoals)
+    .where(and(eq(projectGoals.userId, userId), eq(projectGoals.projectId, projectId)));
+
+  if (wanted.length === 0) return;
+
+  // Only link goals the user actually owns.
+  const owned = await db
+    .select({ id: goals.id })
+    .from(goals)
+    .where(and(eq(goals.userId, userId), inArray(goals.id, wanted)));
+
+  if (owned.length === 0) return;
+
+  await db
+    .insert(projectGoals)
+    .values(owned.map((g) => ({ userId, projectId, goalId: g.id })))
+    .onConflictDoNothing();
+}
+
 export async function createProject(_prev: ProjectState, formData: FormData): Promise<ProjectState> {
   const user = await requireUser();
   const parsed = parse(formData);
@@ -58,6 +92,8 @@ export async function createProject(_prev: ProjectState, formData: FormData): Pr
       origin: "user",
     })
     .returning();
+
+  await setExtraGoals(user.id, project.id, formData.getAll("extraGoalIds").map(String), d.goalId);
 
   revalidatePath("/projects");
   revalidatePath("/");
@@ -86,6 +122,8 @@ export async function updateProject(_prev: ProjectState, formData: FormData): Pr
       completedAt: d.status === "completed" ? new Date() : null,
     })
     .where(and(eq(projects.id, id), eq(projects.userId, user.id)));
+
+  await setExtraGoals(user.id, id, formData.getAll("extraGoalIds").map(String), d.goalId);
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${id}`);

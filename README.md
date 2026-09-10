@@ -22,7 +22,7 @@ can be dismissed, snoozed, investigated, turned into a task, or handed to the AI
 |---|---|
 | Dashboard | Today's priorities (Must/Should/Could), Attention Required, Life Pulse, today's schedule with remaining free time, habits |
 | Tasks | Full CRUD, URL-driven filters by view, time, energy and project, optimistic completion |
-| Projects | List and detail, progress, next action, milestones, stall detection |
+| Projects | List and detail, progress, next action, milestones, stall detection; a project can serve several goals |
 | Goals | Hierarchy; three shapes (reach a target, hold a floor, stay under a ceiling), measured from a start value, progress vs. elapsed time |
 | Calendar | Day / week / month, meeting, focus, fragmentation and free-time analytics |
 | Life Areas | Create, rename, recolour, reorder, archive |
@@ -170,7 +170,7 @@ from Settings.
 |---|---|
 | `npm run dev` | Development server |
 | `npm run build` / `start` | Production build and serve |
-| `npm test` | 62 unit and integration tests |
+| `npm test` | 68 unit and integration tests |
 | `npm run db:generate` / `db:migrate` | Create and apply migrations |
 | `npm run db:seed` / `db:reset` | Reseed demo data / drop all tables |
 | `npm run generate:secret` / `generate:vapid` | Auth and push keys |
@@ -249,7 +249,7 @@ notifications stay in-app.
 npm test
 ```
 
-62 tests. Unit tests cover the capture parser, goal and project progress, habit
+68 tests. Unit tests cover the capture parser, goal and project progress, habit
 streaks, calendar analytics and free slots, quiet-hours wraparound and date
 helpers. Integration tests run against a migrated SQLite file and cover
 provisioning idempotency, the task/project lifecycle, soft deletion, sync upsert

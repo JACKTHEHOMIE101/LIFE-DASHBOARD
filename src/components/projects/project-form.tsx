@@ -27,12 +27,15 @@ export function ProjectForm({
   lifeAreas,
   goals,
   project,
+  extraGoalIds = [],
 }: {
   open: boolean;
   onClose: () => void;
   lifeAreas: PaletteArea[];
   goals: { id: string; title: string }[];
   project?: Project | null;
+  /** Goal ids this project already also serves. */
+  extraGoalIds?: string[];
 }) {
   const router = useRouter();
   const editing = Boolean(project);
@@ -116,7 +119,7 @@ export function ProjectForm({
               </Select>
             </div>
             <div>
-              <Label htmlFor="p-goal">Goal</Label>
+              <Label htmlFor="p-goal">Primary goal</Label>
               <Select id="p-goal" name="goalId" defaultValue={project?.goalId ?? ""}>
                 <option value="">None</option>
                 {goals.map((g) => (
@@ -127,6 +130,30 @@ export function ProjectForm({
               </Select>
             </div>
           </div>
+
+          {goals.length > 1 ? (
+            <fieldset className="rounded-lg border border-border p-3">
+              <legend className="px-1 text-[12px] text-ink-muted">Also serves</legend>
+              <p className="mb-2 text-[11px] text-ink-subtle">
+                Real work rarely advances exactly one goal. Anything ticked here counts this
+                project toward that goal too.
+              </p>
+              <div className="space-y-1.5">
+                {goals.map((g) => (
+                  <label key={g.id} className="flex items-center gap-2 text-[13px] text-ink-muted">
+                    <input
+                      type="checkbox"
+                      name="extraGoalIds"
+                      value={g.id}
+                      defaultChecked={extraGoalIds.includes(g.id)}
+                      className="size-4 accent-[var(--color-accent)]"
+                    />
+                    {g.title}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
         </div>
 
         {state?.error ? (

@@ -31,6 +31,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   if (!project) notFound();
 
+  // Resolve the extra goal links back to ids so the edit form can show them ticked.
+  const extraGoalIds = goals
+    .filter((g) => g.title !== project.goalTitle && project.goalTitles.includes(g.title))
+    .map((g) => g.id);
+
   return (
     <div className="animate-in">
       <Link
@@ -57,6 +62,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         lifeAreas={palette.lifeAreas}
         projects={palette.projects}
         goals={goals.map((g) => ({ id: g.id, title: g.title }))}
+        extraGoalIds={extraGoalIds}
       />
     </div>
   );

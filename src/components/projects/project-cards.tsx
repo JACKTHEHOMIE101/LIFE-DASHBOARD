@@ -66,6 +66,12 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
           ) : null}
         </div>
 
+        {project.goalTitles.length > 0 ? (
+          <p className="mt-2 text-[12px] text-ink-subtle">
+            Serves {project.goalTitles.join(" · ")}
+          </p>
+        ) : null}
+
         {project.nextAction ? (
           <p className="mt-2.5 truncate border-t border-border pt-2.5 text-[12px] text-ink-muted">
             <span className="text-ink-subtle">Next:</span> {project.nextAction.title}

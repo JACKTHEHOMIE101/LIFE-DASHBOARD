@@ -7,7 +7,7 @@ This file is about how to work in the codebase without breaking its principles.
 
 ```bash
 npm run dev            # dev server
-npm test               # vitest, 62 tests
+npm test               # vitest, 68 tests
 npm run build          # production build — the real client/server boundary check
 npm run db:generate    # after any schema change
 npm run db:migrate
@@ -88,6 +88,15 @@ A held line is not "100% complete" — it has to hold until the goal ends, and a
 full progress bar tells the reader to stop watching at exactly the wrong
 moment. Use `computeThresholdState` for those, and always show the elapsed
 clock alongside it.
+
+## Projects and goals are many-to-many
+
+`projects.goalId` is the **primary** goal and drives life-area inheritance.
+`project_goals` holds every additional goal the project contributes to. Both
+are counted when working out whether a goal has anything moving it, deduped by
+project id. Keep the primary out of the join table in the write path
+(`setExtraGoals`) so the two can never disagree about which goal is the
+headline one.
 
 ## Things that will bite you
 
