@@ -93,6 +93,8 @@ export function computeThresholdState(goal: {
 export type GoalSummary = Goal & {
   areaName: string | null;
   areaColor: string | null;
+  /** Title of the goal this one rolls up into, when it is a sub-goal. */
+  parentTitle: string | null;
   /** Null for floor and ceiling goals, which have no percentage. */
   progress: number | null;
   /** Set only for floor and ceiling goals that have a reading. */
@@ -142,6 +144,10 @@ export async function listGoals(
     if (p.goalId) projectCounts.set(p.goalId, (projectCounts.get(p.goalId) ?? 0) + 1);
   }
 
+  // Parent titles resolved from the same result set, so a sub-goal can say what
+  // it rolls up into without a second query per row.
+  const titleById = new Map(rows.map((r) => [r.goal.id, r.goal.title]));
+
   const now = new Date();
   return rows.map(({ goal, areaName, areaColor }) => {
     const progress = computeGoalProgress(goal);
@@ -152,6 +158,7 @@ export async function listGoals(
       ...goal,
       areaName,
       areaColor,
+      parentTitle: goal.parentGoalId ? (titleById.get(goal.parentGoalId) ?? null) : null,
       progress,
       timeElapsed,
       threshold: computeThresholdState(goal),

@@ -209,6 +209,9 @@ function GoalCard({ goal, onEdit }: { goal: GoalSummary; onEdit: () => void }) {
               <Badge tone="neutral">{GOAL_STATUS_LABEL[goal.status]}</Badge>
             ) : null}
           </div>
+          {goal.parentTitle ? (
+            <p className="mt-1 text-[11px] text-ink-subtle">Part of {goal.parentTitle}</p>
+          ) : null}
           {goal.why ? <p className="mt-1 text-[13px] text-ink-muted">{goal.why}</p> : null}
         </div>
 
