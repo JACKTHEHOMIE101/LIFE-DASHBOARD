@@ -26,9 +26,16 @@ Apply the schema to it:
 DATABASE_URL="<url>" DATABASE_AUTH_TOKEN="<token>" npm run db:migrate
 ```
 
-Your local data does **not** come with it. Either start fresh and re-enter, or
-export from Settings first and re-enter what matters. A handful of goals and
-projects is faster to retype than to migrate.
+Then move your existing data across, ids and all:
+
+```bash
+TARGET_DATABASE_URL="<url>" TARGET_DATABASE_AUTH_TOKEN="<token>" npm run db:transfer
+```
+
+It copies parents before children so every foreign key holds, preserves ids so
+all relationships survive, verifies row counts table by table afterwards, and
+refuses to write over a target that already holds data unless you pass
+`TRANSFER_OVERWRITE=1`. Your local database is never modified.
 
 ---
 

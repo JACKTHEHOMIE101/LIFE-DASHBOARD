@@ -16,7 +16,8 @@
     "generate:secret": "node scripts/generate-secret.mjs",
     "generate:vapid": "node scripts/generate-vapid.mjs",
     "setup": "node scripts/setup.mjs",
-    "db:set-credentials": "tsx --env-file-if-exists=.env src/db/set-credentials.mts"
+    "db:set-credentials": "tsx --env-file-if-exists=.env src/db/set-credentials.mts",
+    "db:transfer": "tsx --env-file-if-exists=.env src/db/transfer.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

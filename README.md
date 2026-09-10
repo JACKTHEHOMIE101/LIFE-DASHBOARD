@@ -175,6 +175,7 @@ from Settings.
 | `npm run db:seed` / `db:reset` | Reseed demo data / drop all tables |
 | `npm run generate:secret` / `generate:vapid` | Auth and push keys |
 | `npm run db:set-credentials` | Change the owner email/password (lockout recovery) |
+| `npm run db:transfer` | Copy every row to another database, ids intact (see DEPLOY.md) |
 
 ---
 
