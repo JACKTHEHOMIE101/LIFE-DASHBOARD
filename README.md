@@ -174,6 +174,7 @@ from Settings.
 | `npm run db:generate` / `db:migrate` | Create and apply migrations |
 | `npm run db:seed` / `db:reset` | Reseed demo data / drop all tables |
 | `npm run generate:secret` / `generate:vapid` | Auth and push keys |
+| `npm run db:set-credentials` | Change the owner email/password (lockout recovery) |
 
 ---
 
@@ -215,7 +216,8 @@ notifications stay in-app.
 6. **Search is `LIKE`-based.** Correct at personal-database scale; the return
    shape is designed so vector ranking can replace it without touching callers.
 7. **Single-user by design.** The first account claims the instance and further
-   signup is closed.
+   signup is closed. There is no self-serve password reset (no mail server); use
+   `npm run db:set-credentials` if you are locked out.
 8. **Focus mode** has a data model and analytics but no timer UI.
 9. **Weather is a placeholder slot** that says so rather than showing fake data.
 
