@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { financialAccounts, transactions } from "@/db/schema";
 import { addDays, isoDate, mean, startOfDay, titleCase } from "@/lib/utils";
@@ -80,25 +80,34 @@ export async function getCashflow(userId: string, months = 6): Promise<MonthlyCa
   });
 }
 
+/** Transfers into savings or investments, which are not spending. */
+const SAVINGS_CATEGORY = "savings";
+
 export type CategorySpend = {
   category: string;
   label: string;
   amountMinor: number;
   priorAverageMinor: number | null;
+  /** Highest of the individual baseline windows, used to reject ordinary noise. */
+  priorMaxMinor: number | null;
   changePct: number | null;
 };
 
 /**
  * Spending by category for the last 30 days, each compared against its own
- * average over the three months before that.
+ * baseline over the 90 days before that.
+ *
+ * The baseline is three consecutive 30-day windows, not calendar months.
+ * Calendar months are the obvious choice and the wrong one: the window at each
+ * end is partial, which drags the average down and makes ordinary spending
+ * look like a spike in every category at once.
  */
 export async function getSpendingByCategory(userId: string): Promise<CategorySpend[]> {
   const today = startOfDay(new Date());
-  const recentFrom = isoDate(addDays(today, -30));
-  const priorFrom = isoDate(addDays(today, -120));
 
-  const [recent, prior] = await Promise.all([
-    db
+  /** Total spend per category between two day offsets. */
+  async function spendBetween(fromOffset: number, toOffset: number) {
+    const rows = await db
       .select({
         category: transactions.category,
         total: sql<number>`sum(-${transactions.amountMinor})`,
@@ -108,49 +117,38 @@ export async function getSpendingByCategory(userId: string): Promise<CategorySpe
         and(
           eq(transactions.userId, userId),
           isNull(transactions.deletedAt),
-          gte(transactions.date, recentFrom),
+          gte(transactions.date, isoDate(addDays(today, fromOffset))),
+          lt(transactions.date, isoDate(addDays(today, toOffset))),
           sql`${transactions.amountMinor} < 0`,
         ),
       )
-      .groupBy(transactions.category),
-    db
-      .select({
-        category: transactions.category,
-        month: sql<string>`substr(${transactions.date}, 1, 7)`,
-        total: sql<number>`sum(-${transactions.amountMinor})`,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          isNull(transactions.deletedAt),
-          gte(transactions.date, priorFrom),
-          lte(transactions.date, recentFrom),
-          sql`${transactions.amountMinor} < 0`,
-        ),
-      )
-      .groupBy(transactions.category, sql`2`),
-  ]);
-
-  const priorByCategory = new Map<string, number[]>();
-  for (const row of prior) {
-    priorByCategory.set(row.category, [
-      ...(priorByCategory.get(row.category) ?? []),
-      Number(row.total ?? 0),
-    ]);
+      .groupBy(transactions.category);
+    return new Map(rows.map((r) => [r.category, Number(r.total ?? 0)]));
   }
 
-  return recent
-    .map((row) => {
-      const amountMinor = Number(row.total ?? 0);
-      const priorMonths = priorByCategory.get(row.category) ?? [];
-      // One prior month is not an average worth comparing against.
-      const priorAverageMinor = priorMonths.length >= 2 ? mean(priorMonths) : null;
+  const [recent, ...priorWindows] = await Promise.all([
+    spendBetween(-30, 1),
+    spendBetween(-60, -30),
+    spendBetween(-90, -60),
+    spendBetween(-120, -90),
+  ]);
+
+  return [...recent.entries()]
+    .map(([category, amountMinor]) => {
+      // A window with no spending at all in this category is not evidence of a
+      // zero baseline; it usually means the history does not reach that far.
+      const samples = priorWindows
+        .map((window) => window.get(category))
+        .filter((v): v is number => v !== undefined && v > 0);
+
+      const priorAverageMinor = samples.length >= 2 ? mean(samples) : null;
+
       return {
-        category: row.category,
-        label: titleCase(row.category),
+        category,
+        label: titleCase(category),
         amountMinor,
         priorAverageMinor,
+        priorMaxMinor: samples.length >= 2 ? Math.max(...samples) : null,
         changePct:
           priorAverageMinor && priorAverageMinor > 0
             ? ((amountMinor - priorAverageMinor) / priorAverageMinor) * 100
@@ -160,13 +158,88 @@ export async function getSpendingByCategory(userId: string): Promise<CategorySpe
     .sort((a, b) => b.amountMinor - a.amountMinor);
 }
 
-export type SpendAnomaly = CategorySpend & { changePct: number };
+export type TrailingCashflow = {
+  incomeMinor: number;
+  /** Actual spending, with savings and investment transfers excluded. */
+  expenseMinor: number;
+  transferredMinor: number;
+  netMinor: number;
+  savingsRate: number | null;
+  priorSavingsRate: number | null;
+  hasData: boolean;
+};
+
+/**
+ * Income and spending over the last 30 days, and the 30 before that.
+ *
+ * Used for the headline savings rate instead of the calendar month, because a
+ * month-to-date figure on the 9th reports "no income" for anyone paid at the
+ * end of the month — technically true, and completely useless.
+ */
+export async function getTrailingCashflow(userId: string): Promise<TrailingCashflow> {
+  const today = startOfDay(new Date());
+
+  async function window(fromOffset: number, toOffset: number) {
+    const [row] = await db
+      .select({
+        income: sql<number>`sum(case when ${transactions.amountMinor} > 0 then ${transactions.amountMinor} else 0 end)`,
+        expense: sql<number>`sum(case when ${transactions.amountMinor} < 0 then -${transactions.amountMinor} else 0 end)`,
+        // Money moved into savings or investments has left the current account
+        // but has not been spent. Counting it as an expense would make saving
+        // more look like saving less, which is exactly backwards.
+        transferred: sql<number>`sum(case when ${transactions.amountMinor} < 0 and ${transactions.category} = ${SAVINGS_CATEGORY} then -${transactions.amountMinor} else 0 end)`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          isNull(transactions.deletedAt),
+          gte(transactions.date, isoDate(addDays(today, fromOffset))),
+          lt(transactions.date, isoDate(addDays(today, toOffset))),
+        ),
+      );
+
+    const incomeMinor = Number(row?.income ?? 0);
+    const transferredMinor = Number(row?.transferred ?? 0);
+    const spentMinor = Number(row?.expense ?? 0) - transferredMinor;
+
+    return {
+      incomeMinor,
+      expenseMinor: spentMinor,
+      transferredMinor,
+      savingsRate: incomeMinor > 0 ? (incomeMinor - spentMinor) / incomeMinor : null,
+    };
+  }
+
+  const [recent, prior] = await Promise.all([window(-30, 1), window(-60, -30)]);
+
+  return {
+    incomeMinor: recent.incomeMinor,
+    expenseMinor: recent.expenseMinor,
+    transferredMinor: recent.transferredMinor,
+    netMinor: recent.incomeMinor - recent.expenseMinor,
+    savingsRate: recent.savingsRate,
+    priorSavingsRate: prior.savingsRate,
+    hasData: recent.incomeMinor > 0 || recent.expenseMinor > 0,
+  };
+}
+
+export type SpendAnomaly = CategorySpend & { changePct: number; priorMaxMinor: number };
 
 /**
  * Categories running materially above their own recent baseline.
  *
- * Requires both a meaningful percentage and a meaningful absolute amount, so a
- * £6 category doubling to £12 never gets reported as a financial event.
+ * Three conditions must all hold, and each one exists to kill a specific kind
+ * of false positive:
+ *
+ *  - above the baseline average by `thresholdPct`, so small drifts stay quiet;
+ *  - above a real amount, so a $6 category doubling to $12 is never an event;
+ *  - above *every* individual baseline window, not just their average.
+ *
+ * The last one matters most. Discretionary spending in any single category is
+ * naturally lumpy, and month-to-month swings of 30% are ordinary noise. Testing
+ * against the mean alone flags several categories at once and trains the reader
+ * to ignore the panel, which is worse than not having it.
  */
 export async function getSpendingAnomalies(
   userId: string,
@@ -174,13 +247,17 @@ export async function getSpendingAnomalies(
   minimumMinor = 5_000,
 ): Promise<SpendAnomaly[]> {
   const categories = await getSpendingByCategory(userId);
-  return categories.filter(
-    (c): c is SpendAnomaly =>
-      c.changePct !== null &&
-      c.changePct >= thresholdPct &&
-      c.amountMinor >= minimumMinor &&
-      c.category !== "savings",
-  );
+  return categories
+    .filter(
+      (c): c is SpendAnomaly =>
+        c.changePct !== null &&
+        c.priorMaxMinor !== null &&
+        c.changePct >= thresholdPct &&
+        c.amountMinor >= minimumMinor &&
+        c.amountMinor > c.priorMaxMinor &&
+        c.category !== SAVINGS_CATEGORY,
+    )
+    .sort((a, b) => b.changePct - a.changePct);
 }
 
 export async function getRecentTransactions(userId: string, limit = 25) {
@@ -197,12 +274,13 @@ export async function getRecentTransactions(userId: string, limit = 25) {
 }
 
 export async function getFinanceOverview(userId: string) {
-  const [netWorth, cashflow, categories, anomalies] = await Promise.all([
+  const [netWorth, cashflow, categories, anomalies, trailing] = await Promise.all([
     getNetWorth(userId),
     getCashflow(userId),
     getSpendingByCategory(userId),
     getSpendingAnomalies(userId),
+    getTrailingCashflow(userId),
   ]);
   const current = cashflow.at(-1) ?? null;
-  return { netWorth, cashflow, categories, anomalies, current };
+  return { netWorth, cashflow, categories, anomalies, current, trailing };
 }

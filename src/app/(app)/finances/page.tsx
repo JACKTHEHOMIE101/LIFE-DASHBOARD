@@ -15,11 +15,12 @@ export default async function FinancesPage() {
     getRecentTransactions(user.id, 20),
   ]);
 
-  const { netWorth, cashflow, categories, anomalies, current } = overview;
-  const prior = cashflow.at(-2);
+  const { netWorth, cashflow, categories, anomalies, trailing } = overview;
+  // Trailing 30 days rather than month-to-date: a partial month reports no
+  // income for anyone paid at the end of it.
   const savingsDelta =
-    current?.savingsRate != null && prior?.savingsRate != null
-      ? (current.savingsRate - prior.savingsRate) * 100
+    trailing.savingsRate != null && trailing.priorSavingsRate != null
+      ? (trailing.savingsRate - trailing.priorSavingsRate) * 100
       : null;
 
   if (!netWorth.hasData) {
@@ -64,29 +65,25 @@ export default async function FinancesPage() {
 
         <Card className="p-4">
           <StatTile
-            label="Savings rate this month"
+            label="Savings rate"
             value={
-              current?.savingsRate != null ? `${Math.round(current.savingsRate * 100)}%` : "No data"
+              trailing.savingsRate != null ? `${Math.round(trailing.savingsRate * 100)}%` : "No income recorded"
             }
             delta={
               savingsDelta !== null && Math.abs(savingsDelta) >= 1 ? (
                 <TrendIndicator direction={savingsDelta > 0 ? "up" : "down"}>
-                  {pct(savingsDelta, 0)} vs last month
+                  {pct(savingsDelta, 0)} vs prior 30 days
                 </TrendIndicator>
               ) : undefined
             }
-            sub={
-              current
-                ? `${formatMoney(current.incomeMinor)} in, ${formatMoney(current.expenseMinor)} out`
-                : undefined
-            }
+            sub={`Last 30 days · ${formatMoney(trailing.incomeMinor)} in, ${formatMoney(trailing.expenseMinor)} out`}
           />
         </Card>
 
         <Card className="p-4">
           <StatTile
-            label="Monthly net"
-            value={current ? formatMoney(current.netMinor) : "No data"}
+            label="Net, last 30 days"
+            value={formatMoney(trailing.netMinor)}
             chart={
               cashflow.length > 1 ? (
                 <MiniBars

@@ -4,7 +4,7 @@ import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { events, interactions, lifeAreas, notes, tasks } from "@/db/schema";
 import { addDays, formatDuration, mean, pct, startOfDay } from "@/lib/utils";
-import { getCashflow, getSpendingAnomalies } from "./finances";
+import { getSpendingAnomalies, getTrailingCashflow } from "./finances";
 import { getMetricTrend, getWorkoutStats } from "./health";
 import { listGoals } from "./goals";
 import { listHabits } from "./habits";
@@ -158,28 +158,24 @@ async function healthSignals(userId: string): Promise<[PulseSignal[], string[]]>
 }
 
 async function moneySignals(userId: string): Promise<[PulseSignal[], string[]]> {
-  const [cashflow, anomalies] = await Promise.all([
-    getCashflow(userId, 4),
+  const [trailing, anomalies] = await Promise.all([
+    getTrailingCashflow(userId),
     getSpendingAnomalies(userId),
   ]);
 
   const signals: PulseSignal[] = [];
-  const current = cashflow.at(-1);
-  const prior = cashflow.at(-2);
 
-  if (current?.savingsRate !== null && current?.savingsRate !== undefined) {
-    const rate = current.savingsRate;
+  if (trailing.savingsRate !== null) {
+    const rate = trailing.savingsRate;
     const delta =
-      prior?.savingsRate !== null && prior?.savingsRate !== undefined
-        ? (rate - prior.savingsRate) * 100
-        : null;
+      trailing.priorSavingsRate !== null ? (rate - trailing.priorSavingsRate) * 100 : null;
     signals.push(
       signal(
         "Savings rate",
-        `${Math.round(rate * 100)}% this month`,
+        `${Math.round(rate * 100)}% over 30 days`,
         rate >= 0.2 ? "good" : rate >= 0.05 ? "neutral" : "poor",
         {
-          change: delta !== null ? `${pct(delta, 0)} vs last month` : null,
+          change: delta !== null ? `${pct(delta, 0)} vs prior 30 days` : null,
           direction: delta === null || Math.abs(delta) < 1 ? "flat" : delta > 0 ? "up" : "down",
         },
       ),
@@ -194,15 +190,15 @@ async function moneySignals(userId: string): Promise<[PulseSignal[], string[]]> 
         goodDirection: "down",
       }),
     );
-  } else if (cashflow.length > 0) {
+  } else if (trailing.hasData) {
     signals.push(signal("Spending", "In line with your average", "good", { goodDirection: "down" }));
   }
 
   return [
     signals,
     [
-      "Savings rate: (income minus spending) divided by income for the current calendar month. Good at 20% or more.",
-      "Spending: any category more than 20% above its own 3-month average, ignoring anything under $50.",
+      "Savings rate: (income minus spending) divided by income over the last 30 days, compared with the 30 before. A trailing window rather than the calendar month, so a partial month does not read as zero income. Good at 20% or more.",
+      "Spending: any category more than 20% above its own baseline, where the baseline is the average of the three 30-day windows before this one. Ignores anything under $50.",
     ],
   ];
 }

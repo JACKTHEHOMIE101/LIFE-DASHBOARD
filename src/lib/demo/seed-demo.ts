@@ -88,6 +88,7 @@ export async function seedDemoData(database: Database, userId: string) {
         userId,
         lifeAreaId: area("career"),
         title: "Become a principal engineer",
+        createdAt: day(-210),
         why: "I want the scope to shape technical direction, not just execute it.",
         description: "Lead one company-wide initiative and mentor two engineers.",
         targetDate: day(320),
@@ -103,6 +104,7 @@ export async function seedDemoData(database: Database, userId: string) {
         userId,
         lifeAreaId: area("money"),
         title: "Reach $250k net worth",
+        createdAt: day(-300),
         why: "A two-year runway turns career risk into a choice rather than a threat.",
         targetDate: day(430),
         metricName: "Net worth",
@@ -117,6 +119,7 @@ export async function seedDemoData(database: Database, userId: string) {
         userId,
         lifeAreaId: area("health"),
         title: "Run a half marathon under 1:50",
+        createdAt: day(-62),
         why: "I want a concrete reason to keep training through winter.",
         targetDate: day(154),
         metricName: "Longest run",
@@ -131,6 +134,7 @@ export async function seedDemoData(database: Database, userId: string) {
         userId,
         lifeAreaId: area("personal-growth"),
         title: "Hold a 30 minute conversation in Spanish",
+        createdAt: day(-160),
         why: "We are moving to Madrid for a year and I refuse to arrive helpless.",
         targetDate: day(240),
         metricName: "Conversation length",
@@ -146,6 +150,7 @@ export async function seedDemoData(database: Database, userId: string) {
         userId,
         lifeAreaId: area("relationships"),
         title: "See close friends twice a month",
+        createdAt: day(-95),
         why: "Left alone, months disappear and I only notice afterwards.",
         targetDate: day(200),
         metricName: "Meetups per month",
@@ -523,17 +528,31 @@ export async function seedDemoData(database: Database, userId: string) {
         });
       }
     }
-    // Two to four discretionary purchases a day, with dining running hot for
-    // the last month so the anomaly detector has a real pattern to report.
-    const count = 2 + Math.floor(rand() * 3);
+    // One or two discretionary purchases a day. Kept modest so the persona
+    // actually saves roughly a third of their income, which is what their
+    // net-worth goal and budget project assume.
+    const count = 1 + Math.floor(rand() * 2);
     for (let i = 0; i < count; i++) {
       const v = variable[Math.floor(rand() * variable.length)];
-      const inflation = v.category === "dining" && offset > -30 ? 1.35 : 1;
-      const amount = Math.round((v.min + rand() * (v.max - v.min)) * inflation);
+      const amount = Math.round(v.min + rand() * (v.max - v.min));
       txRows.push({
         userId, accountId: rand() > 0.4 ? card : checking, date: isoDate(d),
         description: v.merchant, merchant: v.merchant, amountMinor: -amount,
         category: v.category, provider: "demo", origin: "imported", ...demo,
+      });
+    }
+
+    // Eating out has become a habit over the last month. Modelled as extra
+    // meals rather than inflated prices, so it is a genuine change in
+    // behaviour that clears the anomaly detector's noise floor instead of
+    // being a statistical artefact.
+    if (offset > -30 && offset % 2 === 0) {
+      const dinner = variable.find((v) => v.merchant === "Bella Cucina")!;
+      txRows.push({
+        userId, accountId: card, date: isoDate(d),
+        description: dinner.merchant, merchant: dinner.merchant,
+        amountMinor: -Math.round(dinner.min + rand() * (dinner.max - dinner.min)),
+        category: "dining", provider: "demo", origin: "imported", ...demo,
       });
     }
   }
