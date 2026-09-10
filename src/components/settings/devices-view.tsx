@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BellRing, Loader2, Smartphone, Trash2 } from "lucide-react";
-import { registerDevice, removeDevice } from "@/lib/actions/notifications";
+import { registerDevice, removeDevice, sendTestNotification } from "@/lib/actions/notifications";
 import {
   Badge, Button, Card, CardHeader, EmptyState, ErrorState,
 } from "@/components/ui/primitives";
@@ -124,6 +124,16 @@ export function DevicesView({
     }
   }
 
+  function sendTest() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const response = await sendTestNotification();
+      if (response.ok) setMessage(response.message);
+      else setError(response.message);
+    });
+  }
+
   return (
     <div className="space-y-5">
       {!pushConfigured ? (
@@ -176,7 +186,22 @@ export function DevicesView({
       </Card>
 
       <Card>
-        <CardHeader title="Registered devices" />
+        <CardHeader
+          title="Registered devices"
+          description={
+            devices.length > 0
+              ? "Send a test to check the whole chain — server, push service, and this phone — rather than waiting for a real reminder."
+              : undefined
+          }
+          action={
+            devices.length > 0 ? (
+              <Button size="sm" variant="secondary" disabled={pending} onClick={sendTest}>
+                {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                Send a test
+              </Button>
+            ) : undefined
+          }
+        />
         {devices.length === 0 ? (
           <EmptyState
             icon={<Smartphone className="size-5" />}

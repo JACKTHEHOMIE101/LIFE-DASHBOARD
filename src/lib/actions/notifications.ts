@@ -11,6 +11,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { deliverDueNotifications } from "@/lib/notifications/engine";
 import { generateNotifications } from "@/lib/notifications/generators";
+import { pushConfigured, sendPush } from "@/lib/notifications/push";
 import { setTaskDone, snoozeTask } from "./tasks";
 
 /** Rebuilds the notification set from current data, then delivers what is due. */
@@ -194,4 +195,63 @@ export async function removeDevice(deviceId: string) {
   const user = await requireUser();
   await db.delete(devices).where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)));
   revalidatePath("/settings/devices");
+}
+
+/**
+ * Sends a push to every enabled device, right now.
+ *
+ * Push has a long chain — VAPID keys, a service worker, an OS permission, and
+ * on iOS a Home Screen install — and every link fails silently. Without a way
+ * to test it deliberately you find out it is broken by never being reminded of
+ * anything, which is the one failure the app must not have. This deliberately
+ * bypasses quiet hours and preferences: the user asked for it in this moment.
+ */
+export async function sendTestNotification() {
+  const user = await requireUser();
+
+  if (!pushConfigured()) {
+    return { ok: false, message: "Push is not configured on the server (VAPID keys are missing)." };
+  }
+
+  const enabled = await db
+    .select()
+    .from(devices)
+    .where(and(eq(devices.userId, user.id), eq(devices.notificationsEnabled, true)));
+
+  if (enabled.length === 0) {
+    return { ok: false, message: "No device is registered for notifications yet." };
+  }
+
+  const results = await Promise.all(
+    enabled.map((device) =>
+      sendPush(device, {
+        title: "Life OS is connected",
+        body: "Notifications will reach this device.",
+        deepLink: "/settings/devices",
+        tag: "test",
+      }),
+    ),
+  );
+
+  const sent = results.filter(Boolean).length;
+
+  if (sent === 0) {
+    // A rejected subscription is the usual cause, and it is worth saying so:
+    // it means the device needs re-registering, not that push is broken.
+    return {
+      ok: false,
+      message:
+        enabled.length === 1
+          ? "The push service rejected this device. Turn notifications off and on again to re-register it."
+          : "The push service rejected every registered device. Re-register them below.",
+    };
+  }
+
+  return {
+    ok: true,
+    message:
+      sent === enabled.length
+        ? `Sent to ${sent} device${sent === 1 ? "" : "s"}. It should arrive within a few seconds.`
+        : `Sent to ${sent} of ${enabled.length} devices. The others were rejected and need re-registering.`,
+  };
 }
