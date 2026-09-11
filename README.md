@@ -23,7 +23,7 @@ can be dismissed, snoozed, investigated, turned into a task, or handed to the AI
 | Dashboard | Today's priorities (Must/Should/Could), Attention Required, Life Pulse, today's schedule with remaining free time, habits |
 | Tasks | Full CRUD, URL-driven filters by view, time, energy and project, optimistic completion |
 | Projects | List and detail, progress, next action, milestones, stall detection; a project can serve several goals |
-| Goals | Hierarchy; three shapes (reach a target, hold a floor, stay under a ceiling), measured from a start value, progress vs. elapsed time |
+| Goals | Hierarchy; three shapes (reach a target, hold a floor, stay under a ceiling), measured from a start value, progress vs. elapsed time, and pace — the rate needed versus the rate being achieved |
 | Calendar | Day / week / month, meeting, focus, fragmentation and free-time analytics |
 | Life Areas | Create, rename, recolour, reorder, archive |
 | Health | Sleep, RHR, HRV, steps, weight trends with sparklines; explicitly no medical inference |
@@ -179,7 +179,7 @@ from Settings.
 |---|---|
 | `npm run dev` | Development server |
 | `npm run build` / `start` | Production build and serve |
-| `npm test` | 83 unit and integration tests |
+| `npm test` | 92 unit and integration tests |
 | `npm run db:generate` / `db:migrate` | Create and apply migrations |
 | `npm run db:seed` / `db:reset` | Reseed demo data / drop all tables |
 | `npm run generate:secret` / `generate:vapid` | Auth and push keys |
@@ -265,7 +265,8 @@ notifications stay in-app.
 npm test
 ```
 
-83 tests. Unit tests cover the capture parser, goal and project progress, habit
+92 tests. Unit tests cover the capture parser, goal and project progress, goal pace and
+the commitment gap, habit
 streaks, calendar analytics and free slots, quiet-hours wraparound and date
 helpers. Integration tests run against a migrated SQLite file and cover
 credential encryption (including refusing tampered ciphertext), Google event

@@ -93,6 +93,25 @@ A goal is one of three kinds, and they are not interchangeable:
 - `floor` — a line to hold at or above (a GPA, a savings rate).
 - `ceiling` — a limit to stay under (a resting heart rate, a monthly spend).
 
+Three questions, and they are not the same one:
+
+- `computeGoalProgress` — how much is done.
+- `computeTimeElapsed` + `behindSchedule` — whether the clock has run further
+  than the work. Answers "am I late".
+- `computeGoalPace` — the rate needed from here against the rate achieved so
+  far. Answers "can I still get there", which is the question progress cannot
+  answer: a goal at 20% with 4% elapsed reads as comfortably ahead while being
+  arithmetically out of reach, if the 20% was where it started.
+
+`computeGoalPace` returns `actualPerWeek: null` until a goal is
+`PACE_MINIMUM_DAYS` old. A rate from three days of history is invented
+precision, and the null is what stops the UI printing one.
+
+`computeCommitmentGap` is the version that works on day one: it compares the
+linked habit's own target against the required rate, so a plan that cannot
+succeed even when kept perfectly is called out while changing it is still cheap.
+It needs no history because it measures the plan, not the delivery.
+
 `computeGoalProgress` returns **null** for floors and ceilings on purpose.
 A held line is not "100% complete" — it has to hold until the goal ends, and a
 full progress bar tells the reader to stop watching at exactly the wrong

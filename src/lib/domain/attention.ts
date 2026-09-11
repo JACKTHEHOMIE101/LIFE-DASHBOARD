@@ -2,11 +2,11 @@ import "server-only";
 
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { reviews, signalDismissals, tasks } from "@/db/schema";
+import { habits, reviews, signalDismissals, tasks } from "@/db/schema";
 import { addDays, daysBetween, formatDuration, isoDate, pct, startOfDay, startOfWeek } from "@/lib/utils";
 import { getSpendingAnomalies } from "./finances";
 import { getMetricTrend } from "./health";
-import { getNeglectedGoals, listGoals } from "./goals";
+import { computeCommitmentGap, computeGoalPace, getNeglectedGoals, listGoals } from "./goals";
 import { getStalledProjects } from "./projects";
 import { getRelationshipsNeedingAttention, getUpcomingDates } from "./relationships";
 import { analyseEvents, getEventsBetween } from "./calendar";
@@ -55,6 +55,7 @@ export async function getAttentionSignals(userId: string, weekStartsOn = 1) {
     sleep,
     weekEvents,
     lastReview,
+    goalHabits,
     dismissals,
   ] = await Promise.all([
     db
@@ -83,6 +84,15 @@ export async function getAttentionSignals(userId: string, weekStartsOn = 1) {
       .where(and(eq(reviews.userId, userId), eq(reviews.type, "weekly")))
       .orderBy(sql`${reviews.periodStart} desc`)
       .limit(1),
+    db
+      .select({
+        goalId: habits.goalId,
+        name: habits.name,
+        frequency: habits.frequency,
+        targetPerPeriod: habits.targetPerPeriod,
+      })
+      .from(habits)
+      .where(and(eq(habits.userId, userId), eq(habits.active, true), isNull(habits.deletedAt))),
     db.select().from(signalDismissals).where(eq(signalDismissals.userId, userId)),
   ]);
 
@@ -163,6 +173,64 @@ export async function getAttentionSignals(userId: string, weekStartsOn = 1) {
       href: "/goals",
       askPrompt: `"${goal.title}" has dropped below the line I set. What would it take to pull it back?`,
     });
+  }
+
+  /*
+   * Pace, which is a different question from "behind schedule".
+   *
+   * Comparing progress against elapsed time says whether you are late. It does
+   * not say whether the finish is still reachable — a goal can read 20% done
+   * with 4% of the time gone and be arithmetically out of reach, because the
+   * 20% is where it started. These two detectors answer the reachable
+   * question, and they answer it early enough to act on.
+   */
+  const habitsByGoal = new Map<string, (typeof goalHabits)[number]>();
+  for (const habit of goalHabits) {
+    if (habit.goalId) habitsByGoal.set(habit.goalId, habit);
+  }
+
+  for (const goal of allGoals.slice(0, 8)) {
+    const pace = computeGoalPace(goal, now);
+    if (!pace) continue;
+
+    const unit = goal.metricUnit && goal.metricUnit !== "USD" ? ` ${goal.metricUnit}` : "";
+    const habit = habitsByGoal.get(goal.id);
+
+    // The plan cannot get there even if kept perfectly. Worth saying on day
+    // one, while changing the plan is still cheap.
+    const gap = habit ? computeCommitmentGap(pace, habit) : null;
+    if (gap) {
+      signals.push({
+        key: `goals:commitment:${goal.id}`,
+        category: "goals",
+        severity: "high",
+        title: `"${goal.title}" needs more than you have planned`,
+        why:
+          `${Math.round(pace.remaining)}${unit} to go in ${pace.daysRemaining} days needs ` +
+          `${pace.requiredPerWeek.toFixed(1)} a week, but "${gap.habitName}" is set to ` +
+          `${gap.plannedPerWeek.toFixed(0)}. Kept perfectly, that finishes about ` +
+          `${Math.round(gap.shortfallAtTarget)} short.`,
+        href: "/goals",
+        askPrompt: `"${goal.title}" needs ${pace.requiredPerWeek.toFixed(1)} a week and my habit is set to ${gap.plannedPerWeek.toFixed(0)}. Should I raise the habit, move the date, or cut the target?`,
+      });
+      continue;
+    }
+
+    // Or the plan is fine and the delivery is not.
+    if (pace.onPace === false && pace.shortfall !== null) {
+      signals.push({
+        key: `goals:pace:${goal.id}`,
+        category: "goals",
+        severity: pace.daysRemaining <= 21 ? "high" : "normal",
+        title: `"${goal.title}" is not on pace`,
+        why:
+          `You are averaging ${pace.actualPerWeek!.toFixed(1)} a week and need ` +
+          `${pace.requiredPerWeek.toFixed(1)}. At this rate you arrive about ` +
+          `${Math.round(pace.shortfall)}${unit} short with ${pace.daysRemaining} days left.`,
+        href: "/goals",
+        askPrompt: `"${goal.title}" is running at ${pace.actualPerWeek!.toFixed(1)} a week against ${pace.requiredPerWeek.toFixed(1)} needed. What would you change?`,
+      });
+    }
   }
 
   for (const goal of allGoals.filter((g) => g.behindSchedule && !g.isNeglected).slice(0, 2)) {

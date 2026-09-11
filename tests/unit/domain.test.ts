@@ -7,6 +7,7 @@ import { computeStreak, expectedCompletions } from "@/lib/domain/habits";
 import { daysUntilAnniversary } from "@/lib/domain/relationships";
 import { analyseEvents, findFreeSlots } from "@/lib/domain/calendar";
 import { inQuietHours } from "@/lib/notifications/engine";
+import { computeCommitmentGap, computeGoalPace } from "@/lib/domain/goals";
 import { changePct, formatDuration, isoDate, startOfWeek } from "@/lib/utils";
 import type { CalendarEvent } from "@/db/schema";
 
@@ -382,5 +383,106 @@ describe("date and number helpers", () => {
   it("returns null percentage change with no baseline", () => {
     expect(changePct(10, 0)).toBeNull();
     expect(changePct(150, 100)).toBe(50);
+  });
+});
+
+describe("goal pace", () => {
+  const base = {
+    kind: "target" as const,
+    startValue: 12,
+    currentValue: 12,
+    targetValue: 60,
+    targetDate: new Date("2026-11-03T00:00:00Z"),
+    createdAt: new Date("2026-09-08T00:00:00Z"),
+  };
+  const now = new Date("2026-09-10T00:00:00Z");
+
+  it("reports the rate the goal needs from here", () => {
+    const pace = computeGoalPace(base, now);
+    expect(pace).not.toBeNull();
+    expect(pace!.remaining).toBe(48);
+    expect(pace!.daysRemaining).toBe(54);
+    expect(pace!.requiredPerWeek).toBeCloseTo(6.2, 1);
+  });
+
+  it("will not claim an achieved rate from two days of history", () => {
+    // A goal this young has no trend, and a projection from one would be
+    // invented precision rather than a measurement.
+    const pace = computeGoalPace(base, now);
+    expect(pace!.actualPerWeek).toBeNull();
+    expect(pace!.projectedValue).toBeNull();
+    expect(pace!.onPace).toBeNull();
+  });
+
+  it("projects a shortfall once there is enough history", () => {
+    const pace = computeGoalPace(
+      { ...base, currentValue: 20 },
+      new Date("2026-09-29T00:00:00Z"),
+    );
+    // 8 covered in 21 days is about 2.7 a week; the goal needs far more.
+    expect(pace!.actualPerWeek).toBeCloseTo(2.7, 1);
+    expect(pace!.onPace).toBe(false);
+    expect(pace!.shortfall).toBeGreaterThan(20);
+  });
+
+  it("says nothing about a goal already met, or a deadline already gone", () => {
+    expect(computeGoalPace({ ...base, currentValue: 60 }, now)).toBeNull();
+    expect(computeGoalPace(base, new Date("2026-12-01T00:00:00Z"))).toBeNull();
+  });
+
+  it("has no opinion on floors and ceilings", () => {
+    expect(computeGoalPace({ ...base, kind: "floor" }, now)).toBeNull();
+    expect(computeGoalPace({ ...base, kind: "ceiling" }, now)).toBeNull();
+  });
+
+  it("handles a goal that counts downward", () => {
+    // A golf handicap going 16 -> 12 is progress downward, not backwards.
+    const pace = computeGoalPace(
+      { ...base, startValue: 16, currentValue: 16, targetValue: 12 },
+      now,
+    );
+    expect(pace!.remaining).toBe(4);
+    expect(pace!.requiredPerWeek).toBeGreaterThan(0);
+  });
+});
+
+describe("commitment gap", () => {
+  const pace = computeGoalPace(
+    {
+      kind: "target" as const,
+      startValue: 12,
+      currentValue: 12,
+      targetValue: 60,
+      targetDate: new Date("2026-11-03T00:00:00Z"),
+      createdAt: new Date("2026-09-08T00:00:00Z"),
+    },
+    new Date("2026-09-10T00:00:00Z"),
+  )!;
+
+  it("flags a plan that cannot reach the goal even if kept perfectly", () => {
+    const gap = computeCommitmentGap(pace, {
+      name: "Drill rundowns",
+      frequency: "weekly",
+      targetPerPeriod: 5,
+    });
+    expect(gap).not.toBeNull();
+    expect(gap!.plannedPerWeek).toBe(5);
+    expect(Math.round(gap!.shortfallAtTarget)).toBe(9);
+  });
+
+  it("stays quiet once the plan is sufficient", () => {
+    expect(
+      computeCommitmentGap(pace, { name: "Drill rundowns", frequency: "weekly", targetPerPeriod: 7 }),
+    ).toBeNull();
+  });
+
+  it("caps a daily habit at once a day rather than believing the target", () => {
+    // A "daily, 5x" habit delivers 7 a week, not 35.
+    const gap = computeCommitmentGap(pace, {
+      name: "Drill rundowns",
+      frequency: "daily",
+      targetPerPeriod: 5,
+    });
+    expect(gap).toBeNull();
   });
 });

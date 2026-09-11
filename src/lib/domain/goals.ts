@@ -55,6 +55,151 @@ export function computeTimeElapsed(goal: {
   return clamp((Date.now() - goal.createdAt.getTime()) / total);
 }
 
+/**
+ * Below this much history, an achieved rate is noise rather than a trend.
+ *
+ * A goal three days old that has moved once would otherwise project a
+ * triumphant finish or a catastrophic miss with equal confidence.
+ */
+export const PACE_MINIMUM_DAYS = 10;
+
+/**
+ * A goal is only judged off pace once the projected miss is this big, in
+ * whichever units it counts. Below it the projection is inside its own noise.
+ */
+export const PACE_SHORTFALL_UNITS = 1;
+
+export type GoalPace = {
+  /** Units still to cover between here and the target. */
+  remaining: number;
+  daysRemaining: number;
+  /** Units per week needed from today to arrive on time. */
+  requiredPerWeek: number;
+  /** Units per week achieved so far. Null until there is enough history. */
+  actualPerWeek: number | null;
+  /** Where the achieved rate lands on the target date. Null without a rate. */
+  projectedValue: number | null;
+  /** How far short that projection falls. Null without a rate, 0 when it does not. */
+  shortfall: number | null;
+  /** Null rather than false when there is not yet enough history to say. */
+  onPace: boolean | null;
+  methodology: string;
+};
+
+/**
+ * The rate a goal needs versus the rate it is getting.
+ *
+ * Comparing progress to elapsed time — which is what the rest of this module
+ * does — answers "am I behind?" but not "can I still get there?". A goal can
+ * sit at 20% with 4% of the time gone and still be unreachable, because the
+ * 20% was where it started rather than ground covered.
+ *
+ * Returns null wherever the question has no honest answer: goals without a
+ * number or a date, goals already met, and deadlines already past, which other
+ * signals cover.
+ */
+export function computeGoalPace(
+  goal: {
+    kind?: GoalKind;
+    startValue: number | null;
+    currentValue: number | null;
+    targetValue: number | null;
+    targetDate: Date | null;
+    createdAt: Date;
+  },
+  now: Date = new Date(),
+): GoalPace | null {
+  // A floor or a ceiling is held, not accumulated; there is no rate to run at.
+  if (goal.kind === "floor" || goal.kind === "ceiling") return null;
+  if (goal.targetDate === null || goal.targetValue === null || goal.currentValue === null) return null;
+
+  const start = goal.startValue ?? 0;
+  const direction = goal.targetValue >= start ? 1 : -1;
+
+  const remaining = (goal.targetValue - goal.currentValue) * direction;
+  if (remaining <= 0) return null; // Already there.
+
+  const msPerDay = 86_400_000;
+  const daysRemaining = Math.ceil((goal.targetDate.getTime() - now.getTime()) / msPerDay);
+  if (daysRemaining <= 0) return null; // Overdue is a different problem.
+
+  const requiredPerWeek = (remaining / daysRemaining) * 7;
+
+  const daysElapsed = (now.getTime() - goal.createdAt.getTime()) / msPerDay;
+  const covered = (goal.currentValue - start) * direction;
+
+  const enoughHistory = daysElapsed >= PACE_MINIMUM_DAYS;
+  const actualPerWeek = enoughHistory ? (covered / daysElapsed) * 7 : null;
+
+  const projectedValue =
+    actualPerWeek === null ? null : goal.currentValue + (actualPerWeek / 7) * daysRemaining * direction;
+
+  const shortfall =
+    projectedValue === null ? null : Math.max(0, (goal.targetValue - projectedValue) * direction);
+
+  return {
+    remaining,
+    daysRemaining,
+    requiredPerWeek,
+    actualPerWeek,
+    projectedValue,
+    shortfall,
+    onPace: shortfall === null ? null : shortfall < PACE_SHORTFALL_UNITS,
+    methodology:
+      `${remaining.toLocaleString()} to go in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} ` +
+      `needs ${requiredPerWeek.toFixed(1)} a week. ` +
+      (actualPerWeek === null
+        ? `Your own rate is not reported until the goal is ${PACE_MINIMUM_DAYS} days old.`
+        : `You are averaging ${actualPerWeek.toFixed(1)} a week since the goal was set.`),
+  };
+}
+
+export type CommitmentGap = {
+  habitName: string;
+  /** What the habit's own target delivers per week, if followed exactly. */
+  plannedPerWeek: number;
+  requiredPerWeek: number;
+  /** Units short on the target date if the plan is kept perfectly. */
+  shortfallAtTarget: number;
+  methodology: string;
+};
+
+/**
+ * Whether the habit attached to a goal can actually reach it.
+ *
+ * This is the one pace question answerable on day one: it compares what the
+ * user committed to against what the arithmetic demands, needing no history at
+ * all. A plan that cannot succeed even when followed perfectly is worth saying
+ * out loud early, while there is still time to change the plan.
+ */
+export function computeCommitmentGap(
+  pace: GoalPace,
+  habit: { name: string; frequency: "daily" | "weekly"; targetPerPeriod: number },
+): CommitmentGap | null {
+  const perPeriod = Math.max(0, habit.targetPerPeriod);
+  if (perPeriod === 0) return null;
+
+  // A daily habit cannot be done more than once a day, which is the same cap
+  // the consistency calculation applies.
+  const plannedPerWeek = habit.frequency === "daily" ? Math.min(perPeriod, 1) * 7 : perPeriod;
+
+  if (plannedPerWeek >= pace.requiredPerWeek) return null;
+
+  const shortfallAtTarget = pace.remaining - (plannedPerWeek / 7) * pace.daysRemaining;
+  if (shortfallAtTarget < PACE_SHORTFALL_UNITS) return null;
+
+  return {
+    habitName: habit.name,
+    plannedPerWeek,
+    requiredPerWeek: pace.requiredPerWeek,
+    shortfallAtTarget,
+    methodology:
+      `"${habit.name}" is set to ${plannedPerWeek.toFixed(0)} a week. ` +
+      `Reaching the target needs ${pace.requiredPerWeek.toFixed(1)}. ` +
+      `Kept perfectly, the plan arrives about ${Math.round(shortfallAtTarget)} short.`,
+  };
+}
+
 export type ThresholdState = {
   /** True while the current reading is on the right side of the line. */
   meeting: boolean;
