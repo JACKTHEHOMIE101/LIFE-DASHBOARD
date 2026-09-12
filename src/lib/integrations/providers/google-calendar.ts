@@ -147,6 +147,51 @@ async function googleGet(path: string, params: URLSearchParams, accessToken: str
   return response.json();
 }
 
+/**
+ * Query parameters for one events.list page.
+ *
+ * Extracted and exported so the sync-token rules can be tested without a Google
+ * account, because getting them wrong fails silently: the request succeeds, the
+ * events are correct, and the only symptom is that every run is a full re-read
+ * for ever.
+ *
+ * Two rules, both learned the hard way:
+ *
+ * `orderBy` suppresses `nextSyncToken` entirely. Google returns 200 and the
+ * right events, just no token, so the cursor is never stored. Ordering is
+ * worthless here anyway — every record is upserted by external id.
+ *
+ * A sync token cannot be combined with a time window; Google rejects it. So the
+ * first request carries `timeMin` and no token, and every later one carries the
+ * token and no window.
+ */
+export function buildEventsParams({
+  syncToken,
+  pageToken,
+  now = new Date(),
+}: {
+  syncToken: string | null;
+  pageToken?: string;
+  now?: Date;
+}) {
+  const params = new URLSearchParams({
+    singleEvents: "true",
+    maxResults: String(PAGE_SIZE),
+    showDeleted: "true",
+  });
+
+  if (syncToken) {
+    params.set("syncToken", syncToken);
+  } else {
+    const from = new Date(now);
+    from.setDate(from.getDate() - INITIAL_WINDOW_DAYS);
+    params.set("timeMin", from.toISOString());
+  }
+
+  if (pageToken) params.set("pageToken", pageToken);
+  return params;
+}
+
 /* ------------------------------------------------------------ normalising */
 
 export function normaliseGoogleEvent(
@@ -289,23 +334,7 @@ export const googleCalendarAdapter: ProviderAdapter = {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           do {
-            const params = new URLSearchParams({
-              singleEvents: "true",
-              maxResults: String(PAGE_SIZE),
-              showDeleted: "true",
-            });
-
-            if (syncToken) {
-              // Google rejects a sync token combined with a time window, so
-              // these two branches must stay mutually exclusive.
-              params.set("syncToken", syncToken);
-            } else {
-              const from = new Date();
-              from.setDate(from.getDate() - INITIAL_WINDOW_DAYS);
-              params.set("timeMin", from.toISOString());
-              params.set("orderBy", "startTime");
-            }
-            if (pageToken) params.set("pageToken", pageToken);
+            const params = buildEventsParams({ syncToken, pageToken });
 
             const page = (await googleGet(
               `/calendars/${encodeURIComponent(calendar.id)}/events`,

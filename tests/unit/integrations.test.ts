@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { decryptJson, encryptJson } from "@/lib/integrations/crypto";
-import { accessTokenExpired, normaliseGoogleEvent } from "@/lib/integrations/providers/google-calendar";
+import {
+  accessTokenExpired,
+  buildEventsParams,
+  normaliseGoogleEvent,
+} from "@/lib/integrations/providers/google-calendar";
 
 const SECRET = "a-test-secret-that-is-long-enough-to-be-realistic";
 
@@ -121,5 +125,36 @@ describe("access token expiry", () => {
   it("refreshes slightly before the deadline, not after it", () => {
     expect(accessTokenExpired({ expiresAt: String(Date.now() + 30_000) })).toBe(true);
     expect(accessTokenExpired({ expiresAt: String(Date.now() + 600_000) })).toBe(false);
+  });
+});
+
+describe("events.list query parameters", () => {
+  it("never sends orderBy, which silently suppresses the sync token", () => {
+    // Verified against the live API: with orderBy the request returns 200 and
+    // the correct events, but no nextSyncToken — so the cursor is never stored
+    // and every run is a full re-read. Nothing errors; it is just permanently
+    // wasteful.
+    expect(buildEventsParams({ syncToken: null }).has("orderBy")).toBe(false);
+    expect(buildEventsParams({ syncToken: "tok" }).has("orderBy")).toBe(false);
+  });
+
+  it("sends a time window on the first request and no token", () => {
+    const params = buildEventsParams({ syncToken: null, now: new Date("2026-09-12T00:00:00Z") });
+    expect(params.get("timeMin")).toBe("2026-08-13T00:00:00.000Z");
+    expect(params.has("syncToken")).toBe(false);
+  });
+
+  it("sends the token afterwards and drops the window, which Google rejects together", () => {
+    const params = buildEventsParams({ syncToken: "tok-123" });
+    expect(params.get("syncToken")).toBe("tok-123");
+    expect(params.has("timeMin")).toBe(false);
+  });
+
+  it("keeps deleted events so removals can be propagated", () => {
+    expect(buildEventsParams({ syncToken: null }).get("showDeleted")).toBe("true");
+  });
+
+  it("expands recurring events into occurrences", () => {
+    expect(buildEventsParams({ syncToken: null }).get("singleEvents")).toBe("true");
   });
 });

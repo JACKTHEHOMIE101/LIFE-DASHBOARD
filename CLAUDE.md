@@ -160,6 +160,12 @@ platform's per-deployment hostname is none of those.
   single-user. `inQuietHours` takes an explicit zone regardless, and is the
   pattern to follow if the domain layer ever needs to serve two clocks.
 
+- **`orderBy` on events.list suppresses Google's sync token.** The request
+  returns 200 with the right events and no `nextSyncToken`, so the cursor is
+  never stored and every run is a full re-read for ever. Nothing errors. The
+  params are built in `buildEventsParams` and tested, because this is invisible
+  from the outside — the only symptom is `mode: "full"` in the sync history.
+
 - **Google's all-day end date is exclusive.** An event on the 14th arrives as
   start 14th, end 15th. Stored literally it spans two days everywhere in the
   app. `normaliseGoogleEvent` pulls it back by a millisecond.
