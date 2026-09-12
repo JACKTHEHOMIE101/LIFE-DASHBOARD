@@ -9,8 +9,41 @@ import { clamp, daysBetween } from "@/lib/utils";
 
 export { GOAL_STATUS_LABEL } from "./labels";
 
-/** A goal with no recorded progress for this long is surfaced as neglected. */
+/**
+ * Silence tolerated on a goal with no deadline, and the ceiling for any goal.
+ *
+ * A goal you will get to eventually does not need chasing every week.
+ */
 export const NEGLECT_THRESHOLD_DAYS = 21;
+
+/** Below this, chasing a goal is nagging rather than warning. */
+export const NEGLECT_FLOOR_DAYS = 3;
+
+/**
+ * The fraction of a goal's remaining time that may pass in silence.
+ *
+ * A flat threshold treats "three weeks quiet on a two-year goal" the same as
+ * "three weeks quiet on a seven-week goal". The second is 40% of the runway
+ * gone, and by the time a fixed 21-day rule notices, the plan has usually
+ * already failed — which is exactly the failure this app exists to prevent.
+ */
+const NEGLECT_FRACTION_OF_REMAINING = 0.08;
+
+/**
+ * How long this particular goal may go quiet before it is worth saying so.
+ *
+ * Scaled to the deadline, floored so it cannot nag, capped so a distant goal
+ * is not chased weekly.
+ */
+export function neglectThresholdDays(daysRemaining: number | null) {
+  if (daysRemaining === null || daysRemaining <= 0) return NEGLECT_THRESHOLD_DAYS;
+  return Math.round(
+    Math.min(
+      NEGLECT_THRESHOLD_DAYS,
+      Math.max(NEGLECT_FLOOR_DAYS, daysRemaining * NEGLECT_FRACTION_OF_REMAINING),
+    ),
+  );
+}
 
 /**
  * Progress toward a goal, as a fraction from 0 to 1, or null when there is
@@ -200,6 +233,65 @@ export function computeCommitmentGap(
   };
 }
 
+export type PlanRunway = {
+  habitName: string;
+  /** What the plan delivers per week if kept exactly. */
+  plannedPerWeek: number;
+  /** Days of work the plan still needs to cover what is left. */
+  daysNeeded: number;
+  /**
+   * Days that may still be lost before the plan becomes unable to finish.
+   * Zero or negative means it already cannot.
+   */
+  slackDays: number;
+  /** The date after which the plan can no longer reach the goal. */
+  breaksOn: Date;
+  methodology: string;
+};
+
+/**
+ * How much delay a goal's plan can still absorb.
+ *
+ * "You are behind" is a judgement about the past and easy to argue with. This
+ * is a date: keep the plan exactly as written, start no later than this, and
+ * you finish — miss it and no amount of keeping the plan is enough.
+ *
+ * The arithmetic is deliberately generous to the user. It assumes the plan is
+ * kept perfectly from the moment they start, so the date it produces is the
+ * last possible one rather than a comfortable one.
+ */
+export function computePlanRunway(
+  pace: GoalPace,
+  habit: { name: string; frequency: "daily" | "weekly"; targetPerPeriod: number },
+  targetDate: Date,
+): PlanRunway | null {
+  const perPeriod = Math.max(0, habit.targetPerPeriod);
+  if (perPeriod === 0) return null;
+
+  // A daily habit cannot be done twice in a day, whatever its target says.
+  const plannedPerWeek = habit.frequency === "daily" ? Math.min(perPeriod, 1) * 7 : perPeriod;
+  if (plannedPerWeek <= 0) return null;
+
+  const daysNeeded = Math.ceil((pace.remaining / plannedPerWeek) * 7);
+  const slackDays = pace.daysRemaining - daysNeeded;
+
+  const breaksOn = new Date(targetDate.getTime() - daysNeeded * 86_400_000);
+
+  return {
+    habitName: habit.name,
+    plannedPerWeek,
+    daysNeeded,
+    slackDays,
+    breaksOn,
+    methodology:
+      `${Math.round(pace.remaining)} left at ${plannedPerWeek.toFixed(0)} a week takes ` +
+      `${daysNeeded} days, and there are ${pace.daysRemaining}. ` +
+      (slackDays > 0
+        ? `${slackDays} day${slackDays === 1 ? "" : "s"} of slack remain.`
+        : "The plan can no longer reach the target."),
+  };
+}
+
 export type ThresholdState = {
   /** True while the current reading is on the right side of the line. */
   meeting: boolean;
@@ -249,6 +341,8 @@ export type GoalSummary = Goal & {
   behindSchedule: boolean;
   daysSinceProgress: number | null;
   isNeglected: boolean;
+  /** Published so the UI can say how long this goal in particular may go quiet. */
+  neglectThresholdDays: number;
   daysRemaining: number | null;
   projectCount: number;
 };
@@ -309,6 +403,7 @@ export async function listGoals(
     const progress = computeGoalProgress(goal);
     const timeElapsed = computeTimeElapsed(goal);
     const daysSinceProgress = goal.lastProgressAt ? daysBetween(goal.lastProgressAt, now) : null;
+    const daysRemaining = goal.targetDate ? daysBetween(now, goal.targetDate) : null;
 
     return {
       ...goal,
@@ -326,8 +421,9 @@ export async function listGoals(
       isNeglected:
         goal.status === "active" &&
         daysSinceProgress !== null &&
-        daysSinceProgress >= NEGLECT_THRESHOLD_DAYS,
-      daysRemaining: goal.targetDate ? daysBetween(now, goal.targetDate) : null,
+        daysSinceProgress >= neglectThresholdDays(daysRemaining),
+      neglectThresholdDays: neglectThresholdDays(daysRemaining),
+      daysRemaining,
       projectCount: projectCounts.get(goal.id) ?? 0,
     };
   });

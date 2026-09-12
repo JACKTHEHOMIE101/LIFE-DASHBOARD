@@ -6,7 +6,13 @@ import { habits, reviews, signalDismissals, tasks } from "@/db/schema";
 import { addDays, daysBetween, formatDuration, isoDate, pct, startOfDay, startOfWeek } from "@/lib/utils";
 import { getSpendingAnomalies } from "./finances";
 import { getMetricTrend } from "./health";
-import { computeCommitmentGap, computeGoalPace, getNeglectedGoals, listGoals } from "./goals";
+import {
+  computeCommitmentGap,
+  computeGoalPace,
+  computePlanRunway,
+  getNeglectedGoals,
+  listGoals,
+} from "./goals";
 import { getStalledProjects } from "./projects";
 import { getRelationshipsNeedingAttention, getUpcomingDates } from "./relationships";
 import { analyseEvents, getEventsBetween } from "./calendar";
@@ -32,6 +38,15 @@ export type AttentionSignal = {
 };
 
 const SEVERITY_RANK: Record<AttentionSeverity, number> = { critical: 0, high: 1, normal: 2 };
+
+/**
+ * Days of slack left in a plan before it is worth interrupting someone.
+ *
+ * Absolute rather than proportional on purpose: this counts days that can
+ * still be lost, and losing your last week hurts the same whether the goal is
+ * seven weeks or two years long.
+ */
+const RUNWAY_WARNING_DAYS = 7;
 
 /**
  * Everything worth interrupting someone about, each carrying its own reason.
@@ -212,6 +227,33 @@ export async function getAttentionSignals(userId: string, weekStartsOn = 1) {
           `${Math.round(gap.shortfallAtTarget)} short.`,
         href: "/goals",
         askPrompt: `"${goal.title}" needs ${pace.requiredPerWeek.toFixed(1)} a week and my habit is set to ${gap.plannedPerWeek.toFixed(0)}. Should I raise the habit, move the date, or cut the target?`,
+      });
+      continue;
+    }
+
+    // The plan can still work, but not for much longer. This is the earliest
+    // honest warning available: it needs no history, only arithmetic, and it
+    // names a date rather than a judgement about the past.
+    const runway = habit && goal.targetDate ? computePlanRunway(pace, habit, goal.targetDate) : null;
+    if (runway && runway.slackDays <= RUNWAY_WARNING_DAYS) {
+      const breaksOn = runway.breaksOn.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+      signals.push({
+        key: `goals:runway:${goal.id}`,
+        category: "goals",
+        severity: "high",
+        title:
+          runway.slackDays <= 0
+            ? `"${goal.title}" cannot be reached at your current plan`
+            : `"${goal.title}" has ${runway.slackDays} day${runway.slackDays === 1 ? "" : "s"} of slack left`,
+        why:
+          `${Math.round(pace.remaining)}${unit} left at ${runway.plannedPerWeek.toFixed(0)} a week takes ` +
+          `${runway.daysNeeded} days, and there are ${pace.daysRemaining}. ` +
+          (runway.slackDays <= 0
+            ? `Keeping "${runway.habitName}" exactly as written no longer gets there.`
+            : `Start no later than ${breaksOn} and keeping "${runway.habitName}" exactly as written still gets there.`),
+        href: "/goals",
+        askPrompt: `"${goal.title}" has ${runway.slackDays} days of slack left against my current habit. Should I raise the rate, move the date, or cut the target?`,
+        suggestedTask: `Do "${runway.habitName}" today`,
       });
       continue;
     }

@@ -7,7 +7,14 @@ import { computeStreak, expectedCompletions } from "@/lib/domain/habits";
 import { daysUntilAnniversary } from "@/lib/domain/relationships";
 import { analyseEvents, findFreeSlots } from "@/lib/domain/calendar";
 import { inQuietHours } from "@/lib/notifications/engine";
-import { computeCommitmentGap, computeGoalPace } from "@/lib/domain/goals";
+import {
+  computeCommitmentGap,
+  computeGoalPace,
+  computePlanRunway,
+  neglectThresholdDays,
+  NEGLECT_FLOOR_DAYS,
+  NEGLECT_THRESHOLD_DAYS,
+} from "@/lib/domain/goals";
 import { changePct, formatDuration, isoDate, startOfWeek } from "@/lib/utils";
 import type { CalendarEvent } from "@/db/schema";
 
@@ -484,5 +491,67 @@ describe("commitment gap", () => {
       targetPerPeriod: 5,
     });
     expect(gap).toBeNull();
+  });
+});
+
+describe("neglect threshold scales to the deadline", () => {
+  it("chases a goal with seven weeks left within days, not weeks", () => {
+    // 52 days remaining. A flat 21-day rule would stay silent until 40% of the
+    // runway was gone, by which point the plan has usually already failed.
+    expect(neglectThresholdDays(52)).toBe(4);
+  });
+
+  it("does not nag a goal that only has days left", () => {
+    expect(neglectThresholdDays(5)).toBe(NEGLECT_FLOOR_DAYS);
+  });
+
+  it("does not chase a distant goal weekly", () => {
+    expect(neglectThresholdDays(730)).toBe(NEGLECT_THRESHOLD_DAYS);
+  });
+
+  it("falls back to the flat threshold without a deadline", () => {
+    expect(neglectThresholdDays(null)).toBe(NEGLECT_THRESHOLD_DAYS);
+    expect(neglectThresholdDays(-3)).toBe(NEGLECT_THRESHOLD_DAYS);
+  });
+});
+
+describe("plan runway", () => {
+  const goal = {
+    kind: "target" as const,
+    startValue: 12,
+    currentValue: 12,
+    targetValue: 60,
+    targetDate: new Date("2026-11-03T00:00:00Z"),
+    createdAt: new Date("2026-09-08T00:00:00Z"),
+  };
+  const habit = { name: "Drill rundowns", frequency: "weekly" as const, targetPerPeriod: 7 };
+
+  it("gives the date after which the plan can no longer finish", () => {
+    const pace = computeGoalPace(goal, new Date("2026-09-12T00:00:00Z"))!;
+    const runway = computePlanRunway(pace, habit, goal.targetDate)!;
+
+    // 48 left at 7 a week is 48 days of work, against 52 remaining.
+    expect(runway.daysNeeded).toBe(48);
+    expect(runway.slackDays).toBe(4);
+    expect(runway.breaksOn.toISOString().slice(0, 10)).toBe("2026-09-16");
+  });
+
+  it("reports a plan that has already run out of room", () => {
+    const pace = computeGoalPace(goal, new Date("2026-10-01T00:00:00Z"))!;
+    const runway = computePlanRunway(pace, habit, goal.targetDate)!;
+    expect(runway.slackDays).toBeLessThan(0);
+    expect(runway.methodology).toMatch(/no longer reach/);
+  });
+
+  it("gains room as progress is actually made", () => {
+    const pace = computeGoalPace({ ...goal, currentValue: 30 }, new Date("2026-09-12T00:00:00Z"))!;
+    const runway = computePlanRunway(pace, habit, goal.targetDate)!;
+    expect(runway.slackDays).toBeGreaterThan(20);
+  });
+
+  it("caps a daily habit at once a day rather than believing the target", () => {
+    const pace = computeGoalPace(goal, new Date("2026-09-12T00:00:00Z"))!;
+    const runway = computePlanRunway(pace, { ...habit, frequency: "daily", targetPerPeriod: 5 }, goal.targetDate)!;
+    expect(runway.plannedPerWeek).toBe(7);
   });
 });
