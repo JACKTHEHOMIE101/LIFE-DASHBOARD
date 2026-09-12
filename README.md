@@ -36,7 +36,7 @@ can be dismissed, snoozed, investigated, turned into a task, or handed to the AI
 | Analytics | Intended vs. actual time, completion trend, goal progress, health and money |
 | Reviews | Weekly and monthly, deterministic stats + editable narrative |
 | Chief of Staff | Tool-using AI over your own data, with citations and confirm-before-write |
-| Notifications | Engine, centre, per-category preferences, quiet hours, push, deep links |
+| Notifications | Engine, centre, per-category preferences, quiet hours, push, deep links, morning and evening briefings at a time you choose |
 | Integrations | Adapter framework; 17 providers defined, Google Calendar implemented end to end |
 | PWA | Installable, offline shell, push, generated icons |
 | Global | Command palette, quick capture, global search, dark/light, mobile-first |
@@ -179,7 +179,7 @@ from Settings.
 |---|---|
 | `npm run dev` | Development server |
 | `npm run build` / `start` | Production build and serve |
-| `npm test` | 92 unit and integration tests |
+| `npm test` | 111 unit and integration tests |
 | `npm run db:generate` / `db:migrate` | Create and apply migrations |
 | `npm run db:seed` / `db:reset` | Reseed demo data / drop all tables |
 | `npm run generate:secret` / `generate:vapid` | Auth and push keys |
@@ -223,9 +223,10 @@ notifications stay in-app.
    exist, but on localhost nothing can call them and the laptop has to be
    awake. See `DEPLOY.md`. On iOS, push additionally requires the PWA to be
    added to the Home Screen — it never works from a Safari tab.
-3. **Morning and evening briefings are configurable but not dispatched.** The
-   scheduler runs the reminder rules; the two briefing digests are not wired
-   into it yet.
+3. **Briefings ride the System notification category.** Turning one on in
+   Settings is not enough by itself — System push has to be on too, or the
+   digest stays in the notification centre. The settings page says so when
+   that is the case.
 4. **Offline is read-mostly.** The service worker caches an app shell and
    visited pages; the offline write queue described in the UI is not
    implemented, so captures made offline are not yet replayed.
@@ -265,7 +266,7 @@ notifications stay in-app.
 npm test
 ```
 
-92 tests. Unit tests cover the capture parser, goal and project progress, goal pace and
+111 tests. Unit tests cover the capture parser, goal and project progress, goal pace and
 the commitment gap, habit
 streaks, calendar analytics and free slots, quiet-hours wraparound and date
 helpers. Integration tests run against a migrated SQLite file and cover

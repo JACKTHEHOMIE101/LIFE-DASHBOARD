@@ -11,6 +11,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { deliverDueNotifications } from "@/lib/notifications/engine";
 import { generateNotifications } from "@/lib/notifications/generators";
+import { generateBriefings } from "@/lib/notifications/briefings";
 import { pushConfigured, sendPush } from "@/lib/notifications/push";
 import { setTaskDone, snoozeTask } from "./tasks";
 
@@ -18,6 +19,7 @@ import { setTaskDone, snoozeTask } from "./tasks";
 export async function refreshNotifications() {
   const user = await requireUser();
   await generateNotifications(user.id, user.settings.weekStartsOn);
+  await generateBriefings(user.id);
   const result = await deliverDueNotifications(user.id);
   revalidatePath("/notifications");
   revalidatePath("/");

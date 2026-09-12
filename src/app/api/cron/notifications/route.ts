@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { userSettings } from "@/db/schema";
 import { deliverDueNotifications } from "@/lib/notifications/engine";
 import { generateNotifications } from "@/lib/notifications/generators";
+import { generateBriefings } from "@/lib/notifications/briefings";
 import { syncAllForUser } from "@/lib/integrations/sync";
 
 /**
@@ -68,8 +69,17 @@ export async function GET(request: Request) {
       }));
 
       const { created } = await generateNotifications(user.id, user.weekStartsOn ?? 1);
+      const briefings = await generateBriefings(user.id);
       const { delivered, suppressed, dropped, clock } = await deliverDueNotifications(user.id);
-      results.push({ userId: user.id, created, delivered, suppressed, dropped, synced, clock });
+      results.push({
+        userId: user.id,
+        created: created + briefings.created,
+        delivered,
+        suppressed,
+        dropped,
+        synced,
+        clock,
+      });
     } catch (error) {
       // One user failing must not stop the rest, and the run must still report.
       results.push({ userId: user.id, created: 0, delivered: 0, suppressed: 0, dropped: 0, synced: [], clock: null });

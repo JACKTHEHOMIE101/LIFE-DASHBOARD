@@ -150,6 +150,17 @@ The redirect URI is built in one place (`redirect-uri.ts`) and preferred from
 the token exchange and what is registered at the provider — and a hosting
 platform's per-deployment hostname is none of those.
 
+## Briefings
+
+`briefings.ts` schedules rather than sends: the row is created with
+`scheduledFor` set to the user's wall-clock time and the normal delivery pass
+picks it up, so nothing in it needs to know the current time. It is given an
+`expiresAt` three hours out, because a morning briefing delivered at two in the
+afternoon is a stale interruption rather than a briefing.
+
+All wall-clock reasoning goes through `src/lib/time-zone.ts`. Never use
+`Date`'s local getters for anything a user sees a time for.
+
 ## Things that will bite you
 
 - **The server's clock is not the user's clock.** Hosted, the runtime is UTC,
@@ -159,6 +170,11 @@ platform's per-deployment hostname is none of those.
   (Vercel reserves `TZ` itself), which is sound only because this is
   single-user. `inQuietHours` takes an explicit zone regardless, and is the
   pattern to follow if the domain layer ever needs to serve two clocks.
+
+- **A category's push switch silently overrides a feature's own switch.**
+  Briefings live in the System category, so "Morning briefing: on" plus System
+  push off means nothing ever arrives. Any new feature with its own enable flag
+  needs to check the category it will be delivered under, and say so in the UI.
 
 - **`orderBy` on events.list suppresses Google's sync token.** The request
   returns 200 with the right events and no `nextSyncToken`, so the cursor is

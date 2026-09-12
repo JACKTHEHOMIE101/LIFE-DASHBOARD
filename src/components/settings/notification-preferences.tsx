@@ -112,6 +112,9 @@ export function NotificationPreferencesView({
   const [quietState, quietAction] = useActionState(updateQuietHours, null);
 
   const categories = [...new Set(preferences.map((p) => p.category))];
+  const systemPushOn = preferences.some(
+    (p) => p.category === "system" && p.channel === "push" && p.enabled,
+  );
   const find = (category: NotificationCategory, channel: Pref["channel"]) =>
     preferences.find((p) => p.category === category && p.channel === channel);
 
@@ -257,6 +260,20 @@ export function NotificationPreferencesView({
           </label>
 
           <div className="space-y-3.5 border-t border-border pt-4">
+            {/*
+              Turning a briefing on here is not enough on its own: delivery
+              still honours the System category's push switch above. Without
+              saying so, the setting reads as "on" and nothing ever arrives,
+              which is the exact silent failure this app is meant not to have.
+            */}
+            {!systemPushOn ? (
+              <p className="rounded-lg border border-border bg-surface-sunken px-3 py-2 text-[12px] text-ink-muted">
+                Briefings are delivered in the <strong className="font-medium">System</strong>{" "}
+                category, and its push switch is off above — so they will appear in the
+                notification centre but will not reach your phone.
+              </p>
+            ) : null}
+
             <label className="flex items-center gap-2.5 text-sm text-ink">
               <input
                 type="checkbox"
